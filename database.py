@@ -145,10 +145,11 @@ class Database():
         for u in favorited_users:
             for retry in range(10):
                 try:
-                    self.c.execute('''INSERT OR IGNORE INTO post_favorites(post_id, favorited_user) VALUES
-                                      (?,?)''',
-                                      (post_id,
-                                      u))
+                    self.c.execute(
+                                  '''INSERT OR IGNORE INTO
+                                     post_favorites(post_id, favorited_user)
+                                     VALUES (?,?)''',
+                                  (post_id, u))
                     break
                 except sqlite3.OperationalError:
                     if retry == 9:
@@ -158,23 +159,24 @@ class Database():
 
     def get_favs(self, id):
         r = requests.get('https://e621.net/favorite/list_users.json',
-                         params={'id':id},
-                         headers={'user-agent':'yre 0.0.00 (splineclaw)'})
+                         params={'id': id},
+                         headers={'user-agent': 'yre 0.0.00 (splineclaw)'})
         j = json.loads(r.text)
         favorited_users = j['favorited_users'].split(',')
         self.save_favs(id, favorited_users)
 
-
     def sample_favs(self):
         print('Reading known posts...')
         # list of post ids with at least one favorite
-        posts = [r[0] for r in self.c.execute('''select id from posts where fav_count > 0''')]
+        posts = [r[0] for r in self.c.execute(
+            '''select id from posts where fav_count > 0''')]
 
         print('Reading sampled posts...')
         # list of posts already sampled, including in db
-        sampled = [r[0] for r in self.c.execute('''select distinct post_id from post_favorites''')]
+        sampled = [r[0] for r in self.c.execute(
+            '''select distinct post_id from post_favorites''')]
         # posts - sampled
-        remaining = [p for p in posts if not p in sampled]
+        remaining = [p for p in posts if p not in sampled]
 
         random.shuffle(remaining)
 
@@ -182,7 +184,7 @@ class Database():
             start = time.time()
             self.get_favs(r)
             self.conn.commit()
-            print('Got post', r, 'in', round(time.time()-start,2), 'seconds')
+            print('Got post', r, 'in', round(time.time()-start, 2), 'seconds')
 
             while time.time() - start < 1:
                 time.sleep(0.01)
