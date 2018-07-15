@@ -45,40 +45,55 @@ class Database():
         tags = tag_string.split(' ')
 
         for tag in tags:
-            self.c.execute('''INSERT OR IGNORE INTO post_tags(post_id, tag_name) VALUES
-                              (?,?)''',
-                              (post_id,
-                              tag))
+            for retry in range(10):
+                try:
+                    self.c.execute('''INSERT OR IGNORE INTO post_tags(post_id, tag_name) VALUES
+                                      (?,?)''',
+                                      (post_id,
+                                      tag))
+                    break
+                except sqlite3.OperationalError:
+                    if retry == 9:
+                        raise sqlite3.OperationalError
+                    # database probably locked, back off a bit
+                    time.sleep(random.random()*(retry+1)**1.2/10)
 
-    def save_post(self, post_dict, updated = None):
+    def save_post(self, post_dict, updated=None):
         if not updated:
             updated = time.time()
-        d = post_dict # for brevity
+        d = post_dict  # for brevity
 
         self.save_tags(d['id'], d['tags'])
 
-        self.c.execute('''INSERT OR REPLACE INTO posts VALUES
-                        (?,?,?,?,?,?,?,?,?)''',
-                        (d['id'],
-                        d['status'],
-                        d['fav_count'],
-                        d['score'],
-                        d['rating'],
-                        d['created_at']['s'],
-                        updated,
-                        d['md5'] if 'md5' in d else 0,
-                        d['file_url'] if 'file_url' in d else 0))
+        for retry in range(10):
+            try:
+                self.c.execute('''INSERT OR REPLACE INTO posts VALUES
+                              (?,?,?,?,?,?,?,?,?)''',
+                               (d['id'],
+                                d['status'],
+                                d['fav_count'],
+                                d['score'],
+                                d['rating'],
+                                d['created_at']['s'],
+                                updated,
+                                d['md5'] if 'md5' in d else 0,
+                                d['file_url'] if 'file_url' in d else 0))
+                break
+            except sqlite3.OperationalError:
+                if retry == 9:
+                    raise sqlite3.OperationalError
+                # database probably locked, back off a bit
+                time.sleep(random.random()*(retry+1)**1.2/10)
 
-
-
-    def get_all_posts(self, before_id = None, after_id = 0):
+    def get_all_posts(self, before_id=None, after_id=0):
         max_id = None
         while before_id != -1:
             start = time.time()
-            r = requests.get('https://e621.net/post/index.json', params={'before_id':before_id, 'limit':'320'}, headers={'user-agent':constants.USER_AGENT})
+            r = requests.get('https://e621.net/post/index.json',
+                    params={'before_id':before_id, 'limit':'320'},
+                    headers={'user-agent':constants.USER_AGENT})
             request_elapsed = time.time() - start
             j = json.loads(r.text)
-
 
             if len(j) > 0:
                 t = time.time()
@@ -93,15 +108,15 @@ class Database():
                 before_id = -1
                 break
 
-
-            if max_id == None:
+            if max_id is None:
                 max_id = j[0]['id']
                 print('Starting with {}'.format(max_id))
             else:
                 # print progress and statistics
                 quantity = max_id - after_id
                 progress = (max_id - before_id - after_id) / quantity
-                print('{}/{} ({:05.2f}%)  req: {:04.3f}s, save: {:04.3f}s'.format(str(before_id).zfill(7),
+                print('{}/{} ({:05.2f}%)  req: {:04.3f}s, save: {:04.3f}s'.format(
+                                           str(before_id).zfill(7),
                                            str(quantity).zfill(7),
                                            progress*100,
                                            request_elapsed,
@@ -128,13 +143,23 @@ class Database():
 
     def save_favs(self, post_id, favorited_users):
         for u in favorited_users:
-            self.c.execute('''INSERT OR IGNORE INTO post_favorites(post_id, favorited_user) VALUES
-                              (?,?)''',
-                              (post_id,
-                              u))
+            for retry in range(10):
+                try:
+                    self.c.execute('''INSERT OR IGNORE INTO post_favorites(post_id, favorited_user) VALUES
+                                      (?,?)''',
+                                      (post_id,
+                                      u))
+                    break
+                except sqlite3.OperationalError:
+                    if retry == 9:
+                        raise sqlite3.OperationalError
+                    # database probably locked, back off a bit
+                    time.sleep(random.random()*(retry+1)**1.2/10)
 
     def get_favs(self, id):
-        r = requests.get('https://e621.net/favorite/list_users.json', params={'id':id}, headers={'user-agent':'yre 0.0.00 (splineclaw)'})
+        r = requests.get('https://e621.net/favorite/list_users.json',
+                         params={'id':id},
+                         headers={'user-agent':'yre 0.0.00 (splineclaw)'})
         j = json.loads(r.text)
         favorited_users = j['favorited_users'].split(',')
         self.save_favs(id, favorited_users)
@@ -155,14 +180,15 @@ class Database():
 
         for r in remaining:
             start = time.time()
-            print('Sampling post', r)
             self.get_favs(r)
             self.conn.commit()
+            print('Got post', r, 'in', round(time.time()-start,2), 'seconds')
 
             while time.time() - start < 1:
                 time.sleep(0.01)
 
         print('All favorites sampled.')
+
 
 def main():
     db = Database()
