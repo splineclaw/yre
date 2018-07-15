@@ -160,5 +160,5 @@ if __name__ == '__main__':
     db = Database()
     db.init_db()
 
-    #db.get_all_posts()
+    db.get_all_posts()
     db.sample_favs()
