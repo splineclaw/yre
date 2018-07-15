@@ -76,29 +76,36 @@ class Database():
         while before_id != -1:
             start = time.time()
             r = requests.get('https://e621.net/post/index.json', params={'before_id':before_id, 'limit':'320'}, headers={'user-agent':constants.USER_AGENT})
+            request_elapsed = time.time() - start
             j = json.loads(r.text)
 
-            if max_id == None:
-                max_id = j[0]['id']
-
-                print('Starting with {}'.format(max_id))
-            else:
-                quantity = max_id - after_id
-                progress = (max_id - before_id - after_id) / quantity
-                print('{}/{} ({}%)'.format(str(before_id).zfill(7),
-                                           str(quantity).zfill(7),
-                                           round(progress*100,2)))
 
             if len(j) > 0:
                 t = time.time()
                 for p in j:
                     self.save_post(p, updated=t)
                 self.conn.commit()
+                save_elapsed = time.time() - t
                 before_id = min([p['id'] for p in j])
+
             else:
                 # we've exhausted all posts
                 before_id = -1
                 break
+
+
+            if max_id == None:
+                max_id = j[0]['id']
+                print('Starting with {}'.format(max_id))
+            else:
+                # print progress and statistics
+                quantity = max_id - after_id
+                progress = (max_id - before_id - after_id) / quantity
+                print('{}/{} ({:05.2f}%)  req: {:04.3f}s, save: {:04.3f}s'.format(str(before_id).zfill(7),
+                                           str(quantity).zfill(7),
+                                           progress*100,
+                                           request_elapsed,
+                                           save_elapsed))
 
             if before_id < after_id:
                 before_id = -1
@@ -111,12 +118,12 @@ class Database():
     def get_older_posts(self):
         # only useful for partial initial downloads
         before_id = [id for id in self.c.execute('''SELECT MIN(id) FROM posts''')][0][0]
-        print('found', before_id)
+        print('Found oldest post:', before_id)
         self.get_all_posts(before_id)
 
     def get_newer_posts(self):
         after_id = [id for id in self.c.execute('''SELECT MAX(id) FROM posts''')][0][0]
-        print('found', after_id)
+        print('Found newest post:', after_id)
         self.get_all_posts(after_id=after_id)
 
     def save_favs(self, post_id, favorited_users):
