@@ -4,6 +4,7 @@ import sqlite3
 import constants
 import json
 import time
+import random
 
 class Database():
     def __init__(self, db_path=None):
@@ -118,7 +119,40 @@ class Database():
         self.get_all_posts(after_id=after_id)
 
     def save_favs(self, post_id, favorited_users):
-        pass
+        for u in favorited_users:
+            self.c.execute('''INSERT OR IGNORE INTO post_favorites(post_id, favorited_user) VALUES
+                              (?,?)''',
+                              (post_id,
+                              u))
+
+    def get_favs(self, id):
+        r = requests.get('https://e621.net/favorite/list_users.json', params={'id':id}, headers={'user-agent':'yre 0.0.00 (splineclaw)'})
+        j = json.loads(r.text)
+        favorited_users = j['favorited_users'].split(',')
+        self.save_favs(id, favorited_users)
+
+
+    def sample_favs(self):
+        print('Reading known posts...')
+        # list of post ids with at least one favorite
+        posts = [r[0] for r in self.c.execute('''select id from posts where fav_count > 0''')]
+
+        print('Reading sampled posts...')
+        # list of posts already sampled, including in db
+        sampled = [r[0] for r in self.c.execute('''select distinct post_id from post_favorites''')]
+        # posts - sampled
+        remaining = [p for p in posts if not p in sampled]
+
+        random.shuffle(remaining)
+
+        for r in remaining:
+            start = time.time()
+            print('Sampling post', r)
+            self.get_favs(r)
+            self.conn.commit()
+
+            while time.time() - start < 1:
+                time.sleep(0.01)
 
 
 
@@ -126,4 +160,5 @@ if __name__ == '__main__':
     db = Database()
     db.init_db()
 
-    db.get_all_posts()
+    #db.get_all_posts()
+    db.sample_favs()
