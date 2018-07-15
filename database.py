@@ -5,6 +5,7 @@ import constants
 import json
 import time
 import random
+from os.path import isfile
 
 class Database():
     def __init__(self, db_path=None):
@@ -91,7 +92,7 @@ class Database():
             if len(j) > 0:
                 t = time.time()
                 for p in j:
-                    db.save_post(p, updated=t)
+                    self.save_post(p, updated=t)
                 self.conn.commit()
                 before_id = min([p['id'] for p in j])
             else:
@@ -154,11 +155,21 @@ class Database():
             while time.time() - start < 1:
                 time.sleep(0.01)
 
+        print('All favorites sampled.')
+
+def main():
+    db = Database()
+
+    if isfile(db.db_path):
+        db.get_newer_posts()
+        db.get_older_posts()
+
+    else:
+        db.init_db()
+        db.get_all_posts()
+
+    db.sample_favs()
 
 
 if __name__ == '__main__':
-    db = Database()
-    db.init_db()
-
-    db.get_all_posts()
-    db.sample_favs()
+    main()
