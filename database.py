@@ -1,4 +1,6 @@
 import requests
+from requests.packages.urllib3.util.retry import Retry
+from requests.adapters import HTTPAdapter
 import json
 import sqlite3
 import constants
@@ -7,11 +9,22 @@ import time
 import random
 from os.path import isfile
 
+
 class Database():
     def __init__(self, db_path=None):
         self.db_path = 'db.sqlite' if not db_path else db_path
         self.conn = sqlite3.connect(self.db_path)
         self.c = self.conn.cursor()
+        self.s = requests.session()
+        self.s.headers.update({'user-agent': constants.USER_AGENT})
+
+        retries = Retry(
+            total=10,
+            backoff_factor=1,
+            status_forcelist=[421, 500, 502, 520, 522, 524, 525]
+            )
+        self.s.mount('http://', HTTPAdapter(max_retries=retries))
+        self.s.mount('https://', HTTPAdapter(max_retries=retries))
 
     def __del__(self):
         self.conn.commit()
@@ -95,9 +108,8 @@ class Database():
         max_id = None
         while before_id != -1:
             start = time.time()
-            r = requests.get('https://e621.net/post/index.json',
-                    params={'before_id':before_id, 'limit':'320'},
-                    headers={'user-agent':constants.USER_AGENT})
+            r = self.s.get('https://e621.net/post/index.json',
+                    params={'before_id':before_id, 'limit':'320'})
             request_elapsed = time.time() - start
             j = json.loads(r.text)
 
@@ -177,9 +189,8 @@ class Database():
                 time.sleep(random.random()*(retry+1)**1.2/10)
 
     def get_favs(self, id):
-        r = requests.get('https://e621.net/favorite/list_users.json',
-                         params={'id': id},
-                         headers={'user-agent': 'yre 0.0.00 (splineclaw)'})
+        r = self.s.get('https://e621.net/favorite/list_users.json',
+                         params={'id': id})
         j = json.loads(r.text)
         favorited_users = j['favorited_users'].split(',')
         self.save_favs(id, favorited_users)
@@ -195,9 +206,10 @@ class Database():
         sampled = [r[0] for r in self.c.execute(
             '''select distinct post_id from favorites_meta''')]
         # posts - sampled
-        print('Differencing...')
+        print('Differencing... ({} - {} = {} posts)'.format(
+            len(posts), len(sampled), len(posts)-len(sampled)))
         remaining = [p for p in posts if p not in sampled]
-
+        print('Shuffling...')
         random.shuffle(remaining)
 
         print(len(remaining), 'posts to sample out of', len(posts))
