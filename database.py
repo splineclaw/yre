@@ -22,13 +22,19 @@ class Database():
         try:
             self.c.execute('''CREATE TABLE posts
                 (id integer primary key, status text, fav_count integer, score integer, rating text,
-                uploaded integer, updated real, md5 text, file_url text)''')
+                uploaded integer, updated real, md5 text, file_url text, unique(id))''')
 
             self.c.execute('''CREATE TABLE post_tags
-                (rowid integer primary key, post_id integer, tag_name text)''')
+                (post_id integer, tag_name text,
+                 unique(post_id, tag_name))''')
 
             self.c.execute('''CREATE TABLE post_favorites
-                (rowid integer primary key, post_id integer, favorited_user text)''')
+                (post_id integer, favorited_user text,
+                 unique(post_id, favorited_user))''')
+
+            self.c.execute('''CREATE TABLE favorites_meta
+                (post_id integer, updated real,
+                 unique(post_id))''')
 
             self.c.execute('''CREATE TABLE tags
                 (id integer primary key, name text, count integer, type integer)''')
@@ -126,9 +132,9 @@ class Database():
                 before_id = -1
                 break
 
-            while time.time() - start < 1:
+            while time.time() - start < constants.PAGE_DELAY:
                 # rate limit to 1 hz
-                time.sleep(0.01)
+                time.sleep(0.001)
 
     def get_older_posts(self):
         # only useful for partial initial downloads
@@ -156,6 +162,19 @@ class Database():
                         raise sqlite3.OperationalError
                     # database probably locked, back off a bit
                     time.sleep(random.random()*(retry+1)**1.2/10)
+        for retry in range(10):
+            try:
+                self.c.execute(
+                              '''INSERT OR IGNORE INTO
+                                 favorites_meta(post_id, updated)
+                                 VALUES (?,?)''',
+                              (post_id, time.time()))
+                break
+            except sqlite3.OperationalError:
+                if retry == 9:
+                    raise sqlite3.OperationalError
+                # database probably locked, back off a bit
+                time.sleep(random.random()*(retry+1)**1.2/10)
 
     def get_favs(self, id):
         r = requests.get('https://e621.net/favorite/list_users.json',
@@ -174,11 +193,14 @@ class Database():
         print('Reading sampled posts...')
         # list of posts already sampled, including in db
         sampled = [r[0] for r in self.c.execute(
-            '''select distinct post_id from post_favorites''')]
+            '''select distinct post_id from favorites_meta''')]
         # posts - sampled
+        print('Differencing...')
         remaining = [p for p in posts if p not in sampled]
 
         random.shuffle(remaining)
+
+        print(len(remaining), 'posts to sample out of', len(posts))
 
         for r in remaining:
             start = time.time()
@@ -186,10 +208,24 @@ class Database():
             self.conn.commit()
             print('Got post', r, 'in', round(time.time()-start, 2), 'seconds')
 
-            while time.time() - start < 1:
-                time.sleep(0.01)
+            while time.time() - start < constants.REQUEST_DELAY:
+                time.sleep(0.001)
 
         print('All favorites sampled.')
+
+
+    def get_branch_favs(self, post_id):
+        self.c.execute('''
+        select post_id, branch_favs, posts.fav_count from
+        (select post_id, count(post_id) as branch_favs from post_favorites where favorited_user in
+            (select favorited_user from post_favorites where post_id = (?))
+            group by post_id order by count(post_id) desc)
+        inner join posts on post_id = posts.id
+        ''',
+        post_id)
+
+        return self.c.fetchall()
+
 
 
 def main():
