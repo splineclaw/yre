@@ -39,6 +39,12 @@ sorts = [
 
 for i, sorted in enumerate(sorts):
     print('\n'+'-'*99)
-    print('SORTED BY {}'.format(['POPULARITY','RELEVANCE','PRODUCT'][i]).center(99))
+    print('SORTED BY {}'.format(
+                                ['POPULARITY', 'RELEVANCE', 'PRODUCT'][i]
+                                ).center(99))
     for r in sorted:
-        print('id:{:7d}  common favs:{:4d}  total favs:{:4d}  popularity:{:.4f}  relevance:{:.4f}  product:{:.4f}'.format(*r))
+        print(
+               ('id:{:7d}  common favs:{:4d}  total favs:{:4d}  ' +
+                'popularity:{:.4f}  relevance:{:.4f}  product:{:.4f}'
+                ).format(*r)
+              )

@@ -1,7 +1,7 @@
-VERSION = '0.0.02'
+VERSION = '0.0.03'
 
 USER_AGENT = 'yre {} (splineclaw)'.format(VERSION)
 
 # rate limiting
-PAGE_DELAY = 2 # 30 per minute
-REQUEST_DELAY = 0.5 #120 per minute
+PAGE_DELAY = 2  # 30 per minute
+REQUEST_DELAY = 0.5  #120 per minute
