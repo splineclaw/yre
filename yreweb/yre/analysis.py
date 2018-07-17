@@ -59,13 +59,13 @@ def compute_similar(source_id, print_enabled=False):
     db = Database()
 
     print('Querying...')
-    results = db.get_branch_favs(source_id)
-    if not results:
+    if not db.have_favs_for(source_id):
         # post not in database. let's fetch it and recalculate.
         print('Post favorites not in database, fetching...')
         db.get_favs(source_id)
         print('Fetch success. Querying...')
-        results = db.get_branch_favs(source_id)
+
+    results = db.get_branch_favs(source_id)
 
     source_favs = max([r[1] for r in results])
 

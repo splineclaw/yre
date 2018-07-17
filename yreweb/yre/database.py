@@ -284,6 +284,16 @@ class Database():
                        (source_id, update_time, *similar_list))
         self.conn.commit()
 
+    def have_favs_for(self, source_id):
+        '''
+        returns boolean reflecting whether the source has had its favorites recorded.
+        '''
+        self.c.execute('''
+                       select * from favorites_meta where post_id = ?
+                       ''',
+                       (source_id,))
+        return self.c.fetchall()
+
 
 
 def main():
