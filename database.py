@@ -227,14 +227,18 @@ class Database():
 
 
     def get_branch_favs(self, post_id):
+        '''
+            returns list of tuples. each tuple contains:
+            (post_id, branch_favs, post_favs)
+        '''
         self.c.execute('''
         select post_id, branch_favs, posts.fav_count from
         (select post_id, count(post_id) as branch_favs from post_favorites where favorited_user in
-            (select favorited_user from post_favorites where post_id = (?))
+            (select favorited_user from post_favorites where post_id = ?)
             group by post_id order by count(post_id) desc)
         inner join posts on post_id = posts.id
         ''',
-        post_id)
+        (post_id,))
 
         return self.c.fetchall()
 
