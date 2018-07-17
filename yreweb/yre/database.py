@@ -3,12 +3,17 @@ from requests.packages.urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 import json
 import sqlite3
-from . import constants
+
 import json
 import time
 import random
-from os.path import isfile
-import os, sys, inspect
+from os.path import isfile, dirname, abspath
+import inspect
+
+try:
+    from . import constants
+except ImportError:
+    import constants
 
 
 class Database():
@@ -21,7 +26,7 @@ class Database():
     - fix post sampling progress indication when using stop condition
     '''
     def __init__(self, db_path=None):
-        self.path = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+        self.path = dirname(abspath(inspect.getfile(inspect.currentframe())))
         self.db_path = self.path + '/db.sqlite' if not db_path else db_path
         self.conn = sqlite3.connect(self.db_path)
         self.c = self.conn.cursor()
@@ -48,7 +53,9 @@ class Database():
         try:
             self.c.execute('''CREATE TABLE posts
                 (id integer primary key, status text, fav_count integer, score integer, rating text,
-                uploaded integer, updated real, md5 text, file_url text, unique(id))''')
+                uploaded integer, updated real, md5 text,
+                file_url text, sample_available integer, preview_available integer,
+                unique(id))''')
 
             self.c.execute('''CREATE TABLE post_tags
                 (post_id integer, tag_name text,
@@ -105,10 +112,18 @@ class Database():
 
         self.save_tags(d['id'], d['tags'])
 
+        has_sample = 0
+        if 'sample_url' in d and d['sample_url'] != d['file_url']:
+            has_sample = 1
+
+        has_preview = 0
+        if 'preview_url' in d and d['preview_url'] != d['file_url']:
+            has_preview = 1
+
         for retry in range(10):
             try:
                 self.c.execute('''INSERT OR REPLACE INTO posts VALUES
-                              (?,?,?,?,?,?,?,?,?)''',
+                              (?,?,?,?,?,?,?,?,?,?,?)''',
                                (d['id'],
                                 d['status'],
                                 d['fav_count'],
@@ -117,7 +132,9 @@ class Database():
                                 d['created_at']['s'],
                                 updated,
                                 d['md5'] if 'md5' in d else 0,
-                                d['file_url'] if 'file_url' in d else 0))
+                                d['file_url'] if 'file_url' in d else 0,
+                                has_sample,
+                                has_preview))
                 break
             except sqlite3.OperationalError:
                 if retry == 9:
@@ -277,31 +294,57 @@ class Database():
         return self.c.fetchall()
 
     def write_similar_row(self, source_id, update_time, similar_list):
-        self.c.execute('''
-                       insert or replace into similar
-                       values (?,?,?,?,?,?,?,?,?,?,?,?)
-                       ''',
-                       (source_id, update_time, *similar_list))
-        self.conn.commit()
+        for retry in range(10):
+            try:
+                self.c.execute('''
+                               insert or replace into similar
+                               values (?,?,?,?,?,?,?,?,?,?,?,?)
+                               ''',
+                               (source_id, update_time, *similar_list))
+                self.conn.commit()
+                break
+            except sqlite3.OperationalError:
+                print('Encountered lock writing similar row. Retries:', retry)
+                if retry == 9:
+                    raise sqlite3.OperationalError
+                # database probably locked, back off a bit
+                time.sleep(random.random()*(retry+1)**1.2/10)
 
     def have_favs_for_id(self, source_id):
         '''
         returns boolean reflecting whether the source has had its favorites recorded.
         '''
-        self.c.execute('''
-                       select * from favorites_meta where post_id = ?
-                       ''',
-                       (source_id,))
-        return self.c.fetchall()
+        for retry in range(10):
+            try:
+                self.c.execute('''
+                               select * from favorites_meta where post_id = ?
+                               ''',
+                               (source_id,))
+                return self.c.fetchall()
+            except sqlite3.OperationalError:
+                print('Encountered lock checking if fav recorded. Retries:', retry)
+                if retry == 9:
+                    raise sqlite3.OperationalError
+                # database probably locked, back off a bit
+                time.sleep(random.random()*(retry+1)**1.2/10)
 
     def get_urls_for_ids(self, id_list):
         urls = []
         for id in id_list:
-            self.c.execute('''
-                           select file_url from posts where id = ?
-                           ''',
-                           (id,))
-            urls.append(self.c.fetchall()[0][0])
+            for retry in range(10):
+                try:
+                    self.c.execute('''
+                                   select file_url from posts where id = ?
+                                   ''',
+                                   (id,))
+                    urls.append(self.c.fetchall()[0][0])
+                    break
+                except sqlite3.OperationalError:
+                    print('Encountered lock writing similar row. Retries:', retry)
+                    if retry == 9:
+                        raise sqlite3.OperationalError
+                    # database probably locked, back off a bit
+                    time.sleep(random.random()*(retry+1)**1.2/10)
 
         return urls
 

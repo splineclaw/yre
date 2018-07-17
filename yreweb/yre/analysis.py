@@ -52,7 +52,7 @@ def compute_similar(source_id, print_enabled=False):
     '''
 
     min_branch_favs = 5
-    min_post_favs = 10
+    min_post_favs = 8
 
     print('Finding similar to', source_id)
 
