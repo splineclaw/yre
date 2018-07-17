@@ -2,6 +2,20 @@ img{
   border-radius: 1%;
 }
 
-body {
+body{
   background-color: #111111;
+}
+
+.grid-item{
+  display:inline-block;
+  margin: .5vw 0.5vw .5vw 0.5vw;
+  border-radius: 3%;
+  background-color: #999999;
+}
+
+.result{
+  width: auto;
+  max-width: 46vw;
+  height: auto;
+  max-height: 46vh;
 }

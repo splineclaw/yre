@@ -256,11 +256,20 @@ class Database():
 
     def sample_favs(self):
         print('Reading known posts...')
-        remaining = [r[0] for r in self.c.execute(
-            '''select distinct id from posts
-               where fav_count > 0 and
-               id not in
-               (select distinct post_id from favorites_meta)''')]
+        for retry in range(10):
+            try:
+                remaining = [r[0] for r in self.c.execute(
+                    '''select distinct id from posts
+                       where fav_count > 0 and
+                       id not in
+                       (select distinct post_id from favorites_meta)''')]
+                break
+            except sqlite3.OperationalError:
+                print('Encountered lock reading unstored favs. Retries:', retry)
+                if retry == 9:
+                    raise sqlite3.OperationalError
+                # database probably locked, back off a bit
+                time.sleep(random.random()*(retry+1)**1.2/10)
 
         print('Shuffling {} posts...'.format(len(remaining)))
         random.shuffle(remaining)
@@ -268,7 +277,16 @@ class Database():
         for r in remaining:
             start = time.time()
             self.get_favs(r)
-            self.conn.commit()
+            for retry in range(10):
+                try:
+                    self.conn.commit()
+                    break
+                except sqlite3.OperationalError:
+                    print('Encountered lock committing favs. Retries:', retry)
+                    if retry == 9:
+                        raise sqlite3.OperationalError
+                    # database probably locked, back off a bit
+                    time.sleep(random.random()*(retry+1)**1.2/10)
             print('Got favs for', r, 'in',
                   round(time.time()-start, 2), 'seconds')
 
@@ -276,6 +294,27 @@ class Database():
                 time.sleep(0.001)
 
         print('All favorites sampled.')
+
+    def find_similar_need_update(self):
+        '''
+        Return ids for which favorites are known but similars are not.
+        '''
+        for retry in range(10):
+            try:
+                remaining = [r[0] for r in self.c.execute(
+                    '''select distinct post_id from favorites_meta
+                       where post_id not in
+                       (select distinct source_id from similar)''')]
+                break
+            except sqlite3.OperationalError:
+                print('Encountered lock reading unstored favs. Retries:', retry)
+                if retry == 9:
+                    raise sqlite3.OperationalError
+                # database probably locked, back off a bit
+                time.sleep(random.random()*(retry+1)**1.2/10)
+        return remaining
+
+
 
     def get_branch_favs(self, post_id):
         '''

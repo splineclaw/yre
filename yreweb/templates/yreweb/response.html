@@ -1,11 +1,15 @@
 {% load static %}
 
+<script src="https://unpkg.com/masonry-layout@4/dist/masonry.pkgd.min.js"></script>
 <title>id {{source}}</title>
 <head>
 <link rel="stylesheet" type="text/css" href="{% static "yreweb/response.css" %}">
 </head>
-<ul>
+<div class="grid" data-masonry='{ "itemSelector": ".grid-item",
+ "columnWidth": 0}'>
 {% for id, url, eurl in zipped %}
-    <a href="{{eurl}}"><img src="{{url}}" title="{{id}}" width='330'></a>
+    <div class="grid-item">
+      <a href="{{eurl}}"><img class='result' src="{{url}}" title="{{id}}"></a>
+    </div>
 {% endfor %}
-</ul>
+</div>

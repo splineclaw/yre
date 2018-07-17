@@ -1,6 +1,11 @@
-from .database import Database
-from .utilities import *
+try:
+    from .database import Database
+    from .utilities import *
+except:
+    from database import Database
+    from utilities import *
 import time
+import random
 
 
 
@@ -106,10 +111,41 @@ def compute_similar(source_id, print_enabled=False):
 
     top_ten_ids = [x[0] for x in product_sorted]
 
-    db.write_similar_row(source_id, time.time(), top_ten_ids)
+    if top_ten_ids:
+        # if there are fewer than 10 similar posts, fill with zeros
+        top_ten_ids = (top_ten_ids + [0]*10)[:10]
 
-    return top_ten_ids
+        db.write_similar_row(source_id, time.time(), top_ten_ids)
+
+        return top_ten_ids
+    else:
+        return None
+
+
+def presample_similar():
+    db = Database()
+
+    print('Searching for posts needing similars computed...')
+    need_update = db.find_similar_need_update()
+    random.shuffle(need_update)
+
+    period = 0
+
+    for id in need_update:
+        start = time.time()
+        compute_similar(id)
+        delta = time.time() - start
+        if not period:
+            period = delta
+        else:
+            # ema 20
+            period = period * 0.95 + delta * 0.05
+
+        print('Similar computation took {:5.2f}s. {:5.2f} per minute.'.format(
+            delta, 60/period
+        ))
+
 
 
 if __name__ == '__main__':
-    print(get_ten_similar(1484432))
+    presample_similar()
