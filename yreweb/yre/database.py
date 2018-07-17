@@ -3,11 +3,12 @@ from requests.packages.urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 import json
 import sqlite3
-import constants
+from . import constants
 import json
 import time
 import random
 from os.path import isfile
+import os, sys, inspect
 
 
 class Database():
@@ -20,7 +21,8 @@ class Database():
     - fix post sampling progress indication when using stop condition
     '''
     def __init__(self, db_path=None):
-        self.db_path = 'db.sqlite' if not db_path else db_path
+        self.path = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+        self.db_path = self.path + '/db.sqlite' if not db_path else db_path
         self.conn = sqlite3.connect(self.db_path)
         self.c = self.conn.cursor()
         self.s = requests.session()

@@ -1,6 +1,7 @@
-from database import Database
+from .database import Database
+from .utilities import *
 import time
-from utilities import *
+
 
 
 def get_ten_similar(source_id, stale_time=10**6):
