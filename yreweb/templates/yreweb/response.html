@@ -1,4 +1,9 @@
+{% load static %}
+
 <title>id {{source}}</title>
+<head>
+<link rel="stylesheet" type="text/css" href="{% static "yreweb/response.css" %}">
+</head>
 <ul>
 {% for id, url, eurl in zipped %}
     <a href="{{eurl}}"><img src="{{url}}" title="{{id}}" width='330'></a>

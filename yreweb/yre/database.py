@@ -348,6 +348,19 @@ class Database():
 
         return urls
 
+    def select_similar(self, source_id):
+        for retry in range(10):
+            try:
+                self.c.execute('''select * from similar where source_id = ?''',
+                             (source_id,))
+                return self.c.fetchall()
+            except sqlite3.OperationalError:
+                print('Encountered lock writing similar row. Retries:', retry)
+                if retry == 9:
+                    raise sqlite3.OperationalError
+                # database probably locked, back off a bit
+                time.sleep(random.random()*(retry+1)**1.2/10)
+
 
 
 def main():

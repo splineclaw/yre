@@ -18,9 +18,8 @@ def get_ten_similar(source_id, stale_time=10**6):
 
     # check if in db
     db = Database()
-    db.c.execute('''select * from similar where source_id = ?''',
-                 (source_id,))
-    results = db.c.fetchall()
+    results = db.select_similar(source_id)
+
 
     if len(results) == 0:
         # not yet in db. let's add it!
