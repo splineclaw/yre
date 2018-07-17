@@ -1,0 +1,5 @@
+<ul>
+{% for id, url, eurl in zipped %}
+    <a href="{{eurl}}"><img src="{{url}}" title="{{id}}"></a>
+{% endfor %}
+</ul>

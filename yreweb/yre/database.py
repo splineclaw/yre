@@ -284,7 +284,7 @@ class Database():
                        (source_id, update_time, *similar_list))
         self.conn.commit()
 
-    def have_favs_for(self, source_id):
+    def have_favs_for_id(self, source_id):
         '''
         returns boolean reflecting whether the source has had its favorites recorded.
         '''
@@ -293,6 +293,17 @@ class Database():
                        ''',
                        (source_id,))
         return self.c.fetchall()
+
+    def get_urls_for_ids(self, id_list):
+        urls = []
+        for id in id_list:
+            self.c.execute('''
+                           select file_url from posts where id = ?
+                           ''',
+                           (id,))
+            urls.append(self.c.fetchall()[0][0])
+
+        return urls
 
 
 
