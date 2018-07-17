@@ -1,39 +1,44 @@
 from database import Database
 
-target_id = 1484432
+source_id = 1484432
 min_branch_favs = 5
 min_post_favs = 10
 
-print('Finding similar to', target_id)
+print('Finding similar to', source_id)
 
 db = Database()
 
-results = db.get_branch_favs(target_id)
+results = db.get_branch_favs(source_id)
+source_favs = max([r[1] for r in results])
 
-# prune low favorite entries
-pruned_results = []
+posts = []
 for r in results:
-    if r[1] >= min_branch_favs and r[2] >= min_post_favs:
-        pruned_results.append(r)
-results = pruned_results
+    if r[0] == source_id or r[1] < min_branch_favs or r[2] < min_post_favs:
+        # exclude the source and posts with insufficient favs
+        continue
+    # branch_favs / post_favs
+    # the fraction of target favoriters who are also source favoriters
+    relevance = r[1]/r[2]
 
-top_ten_popular = [r[0] for r in results[:11]]
-top_ten_popular.remove(target_id)
-print(top_ten_popular)
+    # branch_favs / source_favs
+    # the fraction of source favoriters who are also target favoriters
+    popularity = r[1] / source_favs
 
-relevances = [r[1]/r[2] for r in results]  # branch_favs / post_favs
+    # relevance * popularity
+    product = relevance * popularity
 
-relevant = [
-             # set to None if it's the target_id so we can remove it
-             (x[0], a, x[1], x[2]) if x[0] != target_id else None
-             # sort according to relevance, then by favorites
-             for a, x in sorted(zip(relevances, results),
-                                key=lambda x: (x[0], x[1][1]),
-                                reverse=True)
-             ]
-relevant.remove(None)
+    # id, branch_favs, post_favs, popularity, relevance, product
+    posts.append((*r, popularity, relevance, product))
 
-for r in relevant[:10]:
-    print('id:{}\t relevance:{:.4f}\t popularity:{}\t favs:{}'.format(
-        *r
-    ))
+sorts = [
+         [x for x in sorted(posts,
+                            key=lambda x: (x[sort_i]),
+                            reverse=True)][:10]
+         for sort_i in [3, 4, 5]  # sort by popularity, relevance, product
+        ]
+
+for i, sorted in enumerate(sorts):
+    print('\n'+'-'*99)
+    print('SORTED BY {}'.format(['POPULARITY','RELEVANCE','PRODUCT'][i]).center(99))
+    for r in sorted:
+        print('id:{:7d}  common favs:{:4d}  total favs:{:4d}  popularity:{:.4f}  relevance:{:.4f}  product:{:.4f}'.format(*r))
