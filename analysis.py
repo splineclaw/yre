@@ -9,6 +9,13 @@ print('Finding similar to', source_id)
 db = Database()
 
 results = db.get_branch_favs(source_id)
+if not results:
+    # post not in database. let's fetch it and recalculate.
+    print('Post not in database, fetching...')
+    db.get_favs(source_id)
+    print('Fetch success.')
+    results = db.get_branch_favs(source_id)
+
 source_favs = max([r[1] for r in results])
 
 posts = []
