@@ -34,8 +34,11 @@ class Database():
         self.s.mount('http://', HTTPAdapter(max_retries=retries))
         self.s.mount('https://', HTTPAdapter(max_retries=retries))
 
+        self.nocommit = False # set to true if only reading
+
     def __del__(self):
-        self.conn.commit()
+        if not self.nocommit:
+            self.conn.commit()
         self.conn.close()
         del self
 
@@ -58,7 +61,15 @@ class Database():
                  unique(post_id))''')
 
             self.c.execute('''CREATE TABLE tags
-                (id integer primary key, name text, count integer, type integer)''')
+                (id integer primary key, name text,
+                 count integer, type integer)''')
+
+            self.c.execute('''CREATE TABLE similar
+                           (source_id integer primary key, updated real,
+                           top_1 integer, top_2 integer, top_3 integer,
+                           top_4 integer, top_5 integer, top_6 integer,
+                           top_7 integer, top_8 integer, top_9 integer,
+                           top_10 integer)''')
 
             self.conn.commit()
             print("Created database.")
@@ -262,6 +273,15 @@ class Database():
         (post_id,))
 
         return self.c.fetchall()
+
+    def write_similar_row(self, source_id, update_time, similar_list):
+        self.c.execute('''
+                       insert or replace into similar
+                       values (?,?,?,?,?,?,?,?,?,?,?,?)
+                       ''',
+                       (source_id, update_time, *similar_list))
+        self.conn.commit()
+
 
 
 def main():
