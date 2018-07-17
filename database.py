@@ -206,28 +206,20 @@ class Database():
 
     def sample_favs(self):
         print('Reading known posts...')
-        # list of post ids with at least one favorite
-        posts = [r[0] for r in self.c.execute(
-            '''select id from posts where fav_count > 0''')]
+        remaining = [r[0] for r in self.c.execute(
+            '''select distinct id from posts
+               where fav_count > 0 and
+               id not in
+               (select distinct post_id from favorites_meta)''')]
 
-        print('Reading sampled posts...')
-        # list of posts already sampled, including in db
-        sampled = [r[0] for r in self.c.execute(
-            '''select distinct post_id from favorites_meta''')]
-        # posts - sampled
-        print('Differencing... ({} - {} = {} posts)'.format(
-            len(posts), len(sampled), len(posts)-len(sampled)))
-        remaining = [p for p in posts if p not in sampled]
-        print('Shuffling...')
+        print('Shuffling {} posts...'.format(len(remaining)))
         random.shuffle(remaining)
-
-        print(len(remaining), 'posts to sample out of', len(posts))
 
         for r in remaining:
             start = time.time()
             self.get_favs(r)
             self.conn.commit()
-            print('Got post', r, 'in', round(time.time()-start, 2), 'seconds')
+            print('Got favs for', r, 'in', round(time.time()-start, 2), 'seconds')
 
             while time.time() - start < constants.REQUEST_DELAY:
                 time.sleep(0.001)
