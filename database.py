@@ -11,6 +11,15 @@ from os.path import isfile
 
 
 class Database():
+    '''
+    Database handles database access.
+    For now, it also performs remote access.
+
+    TODO:
+    - efficient favorite set differencing
+    - better remote error handling
+    - update existing posts
+    '''
     def __init__(self, db_path=None):
         self.db_path = 'db.sqlite' if not db_path else db_path
         self.conn = sqlite3.connect(self.db_path)
