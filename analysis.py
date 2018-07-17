@@ -31,7 +31,6 @@ for r in results:
     # the fraction of source favoriters who are also target favoriters
     popularity = r[1] / source_favs
 
-    # relevance * popularity
     product = relevance * popularity
 
     # id, branch_favs, post_favs, popularity, relevance, product
@@ -41,17 +40,19 @@ sorts = [
          [x for x in sorted(posts,
                             key=lambda x: (x[sort_i]),
                             reverse=True)][:10]
-         for sort_i in [3, 4, 5]  # sort by popularity, relevance, product
+         for sort_i in range(3, 6)  # sort by popularity, relevance, product
         ]
 
+linewidth = 99
 for i, sorted in enumerate(sorts):
-    print('\n'+'-'*99)
+    print('\n'+'-'*linewidth)
     print('SORTED BY {}'.format(
                                 ['POPULARITY', 'RELEVANCE', 'PRODUCT'][i]
-                                ).center(99))
+                                ).center(linewidth))
     for r in sorted:
         print(
                ('id:{:7d}  common favs:{:4d}  total favs:{:4d}  ' +
-                'popularity:{:.4f}  relevance:{:.4f}  product:{:.4f}'
+                'popularity:{:.4f}  relevance:{:.4f}  ' +
+                'product:{:.4f}'
                 ).format(*r)
               )
