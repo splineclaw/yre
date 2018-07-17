@@ -24,8 +24,12 @@ print(top_ten_popular)
 relevances = [r[1]/r[2] for r in results]  # branch_favs / post_favs
 
 relevant = [
+             # set to None if it's the target_id so we can remove it
              (x[0], a, x[1], x[2]) if x[0] != target_id else None
-             for a, x in sorted(zip(relevances, results), reverse=True)
+             # sort according to relevance, then by favorites
+             for a, x in sorted(zip(relevances, results),
+                                key=lambda x: (x[0], x[1][1]),
+                                reverse=True)
              ]
 relevant.remove(None)
 
