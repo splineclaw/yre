@@ -29,6 +29,7 @@ class Database():
         self.path = dirname(abspath(inspect.getfile(inspect.currentframe())))
         self.db_path = self.path + '/db.sqlite' if not db_path else db_path
         self.conn = sqlite3.connect(self.db_path)
+        self.conn.execute("PRAGMA journal_mode=WAL")
         self.c = self.conn.cursor()
         self.s = requests.session()
         self.s.headers.update({'user-agent': constants.USER_AGENT})
