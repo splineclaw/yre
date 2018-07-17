@@ -16,9 +16,8 @@ class Database():
     For now, it also performs remote access.
 
     TODO:
-    - efficient favorite set differencing
     - better remote error handling
-    - update existing posts
+    - fix post sampling progress indication when using stop condition
     '''
     def __init__(self, db_path=None):
         self.db_path = 'db.sqlite' if not db_path else db_path
@@ -113,16 +112,18 @@ class Database():
                 # database probably locked, back off a bit
                 time.sleep(random.random()*(retry+1)**1.2/10)
 
-    def get_all_posts(self, before_id=None, after_id=0):
+    def get_all_posts(self, before_id=None, after_id=0, stop_count=None):
         max_id = None
+        count = 0
         while before_id != -1:
             start = time.time()
             r = self.s.get('https://e621.net/post/index.json',
-                    params={'before_id':before_id, 'limit':'320'})
+                    params={'before_id': before_id, 'limit': '320'})
             request_elapsed = time.time() - start
             j = json.loads(r.text)
 
             if len(j) > 0:
+                count += len(j)
                 t = time.time()
                 for p in j:
                     self.save_post(p, updated=t)
@@ -153,20 +154,39 @@ class Database():
                 before_id = -1
                 break
 
+            if stop_count and count >= stop_count:
+                print('Stopping; sampled {} posts ({} target)'.format(
+                    count, stop_count
+                ))
+                before_id = - 1
+                break
+
             while time.time() - start < constants.PAGE_DELAY:
                 # rate limit to 1 hz
                 time.sleep(0.001)
 
     def get_older_posts(self):
         # only useful for partial initial downloads
-        before_id = [id for id in self.c.execute('''SELECT MIN(id) FROM posts''')][0][0]
+        before_id = [id for id in self.c.execute(
+            '''SELECT MIN(id) FROM posts''')][0][0]
         print('Found oldest post:', before_id)
         self.get_all_posts(before_id)
 
     def get_newer_posts(self):
-        after_id = [id for id in self.c.execute('''SELECT MAX(id) FROM posts''')][0][0]
+        after_id = [id for id in self.c.execute(
+            '''SELECT MAX(id) FROM posts''')][0][0]
         print('Found newest post:', after_id)
         self.get_all_posts(after_id=after_id)
+
+    def get_recent_posts(self, stop_count=1000):
+        print('Getting newest {} posts.'.format(stop_count))
+        self.get_all_posts(stop_count=stop_count)
+
+    def get_newer_and_recent(self, recent_count=1000):
+        after_id = [id for id in self.c.execute(
+            '''SELECT MAX(id) FROM posts''')][0][0]
+        print('Found newest post:', after_id)
+        self.get_all_posts(after_id=after_id - recent_count)
 
     def save_favs(self, post_id, favorited_users):
         for u in favorited_users:
@@ -199,7 +219,7 @@ class Database():
 
     def get_favs(self, id):
         r = self.s.get('https://e621.net/favorite/list_users.json',
-                         params={'id': id})
+                       params={'id': id})
         j = json.loads(r.text)
         favorited_users = j['favorited_users'].split(',')
         self.save_favs(id, favorited_users)
@@ -219,13 +239,13 @@ class Database():
             start = time.time()
             self.get_favs(r)
             self.conn.commit()
-            print('Got favs for', r, 'in', round(time.time()-start, 2), 'seconds')
+            print('Got favs for', r, 'in',
+                  round(time.time()-start, 2), 'seconds')
 
             while time.time() - start < constants.REQUEST_DELAY:
                 time.sleep(0.001)
 
         print('All favorites sampled.')
-
 
     def get_branch_favs(self, post_id):
         '''
@@ -244,13 +264,11 @@ class Database():
         return self.c.fetchall()
 
 
-
 def main():
     db = Database()
 
     if isfile(db.db_path):
-        db.get_newer_posts()
-        db.get_older_posts()
+        db.get_newer_and_recent()
 
     else:
         db.init_db()
