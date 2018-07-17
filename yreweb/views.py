@@ -7,7 +7,7 @@ from .yre.database import Database
 # Create your views here.
 def index(request):
     #redirect to example
-    return HttpResponseRedirect('/1484432/')
+    return HttpResponseRedirect('/1479413/')
 
 def similar_list(request, source_id):
     return(HttpResponse(str(get_ten_similar(source_id))))
