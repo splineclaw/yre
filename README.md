@@ -1,6 +1,4 @@
 ## Y R E
-#### Yiff Recommendation Engine
-
 ![Example output](https://raw.githubusercontent.com/splineclaw/yre/master/example.jpg)
 _Source image by gugu-troll. Suggested works by shlinka, wolnir, angiewolf, amenlona, koul, melloque, and alaiaorax._
 
