@@ -46,6 +46,6 @@ def similar_pics(request, source_id, stale_time=10**4):
 def recompute_similar(request, source_id):
     return similar_pics(request, source_id, stale_time=0)
 
-def subset(request, entries = 10**6):
+def subset(request):
     db = Database()
     return HttpResponse(db.update_favorites_subset())

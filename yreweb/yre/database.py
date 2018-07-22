@@ -413,27 +413,28 @@ class Database():
                 # database probably locked, back off a bit
                 time.sleep(random.random()*(retry+1)**1.2/10)
 
-    def update_favorites_subset(self, entries=10**6):
+    def update_favorites_subset(self, limit=10**7, fav_min=30):
         '''
-        Samples a maximum of one million entries from table post_favorites
+        Loads only posts over favorite threshhold
         into table favorites_subset. Dramatically reduces compute time.
         '''
         start = time.time()
-        print('Updating favorites samples. This will take several minutes. Deleting old...')
+        print('Updating favorites subset. This will take several minutes. Deleting old...')
         self.c.execute('''delete from favorites_subset''')
-        print('Selecting and writing new subset, size {}...'.format(entries))
+        print('Selecting and writing new subset, fav min {}, limit {:,}...'.format(
+            fav_min, limit))
         self.c.execute('''insert into favorites_subset
                         select post_id, favorited_user
                         from post_favorites
                         inner join posts on post_id = posts.id
-                        where posts.fav_count >= 30
+                        where posts.fav_count >= ?
                         order by random()
                         limit ?
                         ''',
-                        (entries,))
+                        (fav_min, limit,))
         self.conn.commit()
-        status = 'Done with subset. Took {}'.format(
-            seconds_to_dhms(time.time()-start))
+        status = 'Done with subset. Fav min {}, limit {:,}. Took {}'.format(
+            fav_min, limit, seconds_to_dhms(time.time()-start))
         print(status)
         return status
 

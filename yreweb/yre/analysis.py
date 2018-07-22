@@ -6,6 +6,7 @@ except:
     from utilities import *
 import time
 import random
+import math
 
 
 
@@ -17,7 +18,7 @@ def get_ten_similar(source_id, stale_time=10**6):
     Default stale time is 10**6 seconds, or 11.6 days.
     '''
 
-    compute_print = False # show table of statistics?
+    compute_print = True # show table of statistics?
 
     print('Getting top ten similar for', source_id)
 
@@ -56,7 +57,7 @@ def compute_similar(source_id, print_enabled=False):
     and returns their ids as a list
     '''
 
-    min_branch_favs = 5
+    min_branch_favs = 2
     min_post_favs = 10
 
     print('Finding similar to', source_id)
@@ -93,7 +94,7 @@ def compute_similar(source_id, print_enabled=False):
         # branch_favs
         raw = r[1]
 
-        pop_adj = r[1] / r[2]**0.1
+        pop_adj = r[1]**1 / r[2]**0.2
 
         # id, branch_favs, post_favs, popularity, relevance, product ...
         posts.append((*r, popularity, relevance, product, raw, pop_adj))
