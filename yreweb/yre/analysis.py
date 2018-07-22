@@ -78,12 +78,13 @@ def compute_similar(source_id, print_enabled=False):
 
     posts = []
     for r in results:
+        # (post_id, branch_favs, post_favs)
         if r[0] == source_id or r[1] < min_branch_favs or r[2] < min_post_favs:
             # exclude the source and posts with insufficient favs
             continue
         # branch_favs / post_favs
         # the fraction of target favoriters who are also source favoriters
-        relevance = r[1]/r[2]
+        relevance = r[1]/min(r[2],100)
 
         # branch_favs / source_favs
         # the fraction of source favoriters who are also target favoriters
@@ -91,13 +92,8 @@ def compute_similar(source_id, print_enabled=False):
 
         product = relevance * popularity
 
-        # branch_favs
-        raw = r[1]
-
-        pop_adj = r[1]**1 / r[2]**0.2
-
         # id, branch_favs, post_favs, popularity, relevance, product ...
-        posts.append((*r, popularity, relevance, product, raw, pop_adj))
+        posts.append((*r, popularity, relevance, product))
 
     print('Sorting...')
 

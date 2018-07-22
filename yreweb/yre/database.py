@@ -228,6 +228,11 @@ class Database():
         print('Found newest post:', after_id)
         self.get_all_posts(after_id=after_id - recent_count)
 
+    def get_post_ids(self):
+        return [id[0] for id in self.c.execute(
+            '''select id from posts''')]
+
+
     def save_favs(self, post_id, favorited_users):
         for u in favorited_users:
             for retry in range(10):
@@ -413,30 +418,52 @@ class Database():
                 # database probably locked, back off a bit
                 time.sleep(random.random()*(retry+1)**1.2/10)
 
-    def update_favorites_subset(self, limit=10**7, fav_min=30):
+    def update_favorites_subset(self, limit=64, fav_min=50, fav_max=400):
         '''
         Loads only posts over favorite threshhold
         into table favorites_subset. Dramatically reduces compute time.
         '''
         start = time.time()
+
         print('Updating favorites subset. This will take several minutes. Deleting old...')
         self.c.execute('''delete from favorites_subset''')
-        print('Selecting and writing new subset, fav min {}, limit {:,}...'.format(
-            fav_min, limit))
-        self.c.execute('''insert into favorites_subset
-                        select post_id, favorited_user
-                        from post_favorites
-                        inner join posts on post_id = posts.id
-                        where posts.fav_count >= ?
-                        order by random()
-                        limit ?
-                        ''',
-                        (fav_min, limit,))
+
+        print('Selecting and writing new subset, fav range {}-{}, limit {:,}...'.format(
+            fav_min, fav_max, limit))
+
+        post_ids = self.get_post_ids()
+
+        q = max(post_ids)
+
+        for id in post_ids:
+            # print progress
+            if id % 10000 == 0:
+                print('{}/{}: {:5.2f}%'.format(
+                    id, q, id/q * 100
+                ))
+
+            self.c.execute('''
+                           insert into favorites_subset
+                           select post_id, favorited_user from post_favorites
+                                inner join posts on post_id = posts.id
+                                where post_id = ? and
+                                posts.fav_count >= ? and posts.fav_count <= ?
+                                order by random()
+                                limit ?''',
+                                (id, fav_min, fav_max, limit))
+
+        print('Committing changes.')
         self.conn.commit()
-        status = 'Done with subset. Fav min {}, limit {:,}. Took {}'.format(
-            fav_min, limit, seconds_to_dhms(time.time()-start))
+        status = 'Done with subset. Fav min {}, limit {:,}. Took {} ({:.4f}ms per post.)'.format(
+            fav_min, limit, seconds_to_dhms(time.time()-start),
+            (time.time()-start)*1000/q)
         print(status)
         return status
+
+    def get_favcount_stats(self, fav_count):
+        self.c.execute('''select count(*) from posts where fav_count=?''',
+                       (fav_count,))
+        return self.c.fetchall()[0][0]
 
 
 
