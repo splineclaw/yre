@@ -46,6 +46,7 @@ def get_ten_similar(source_id, stale_time=10**6):
             ))
             top_ten = compute_similar(source_id, print_enabled=compute_print)
 
+
     return top_ten
 
 
@@ -56,7 +57,7 @@ def compute_similar(source_id, print_enabled=False):
     '''
 
     min_branch_favs = 5
-    min_post_favs = 8
+    min_post_favs = 10
 
     print('Finding similar to', source_id)
 
@@ -89,8 +90,13 @@ def compute_similar(source_id, print_enabled=False):
 
         product = relevance * popularity
 
-        # id, branch_favs, post_favs, popularity, relevance, product
-        posts.append((*r, popularity, relevance, product))
+        # branch_favs
+        raw = r[1]
+
+        pop_adj = r[1] / r[2]**0.1
+
+        # id, branch_favs, post_favs, popularity, relevance, product ...
+        posts.append((*r, popularity, relevance, product, raw, pop_adj))
 
     print('Sorting...')
 

@@ -15,6 +15,11 @@ try:
 except ImportError:
     import constants
 
+try:
+    from .utilities import *
+except ImportError:
+    from utilities import *
+
 
 class Database():
     '''
@@ -42,10 +47,10 @@ class Database():
         self.s.mount('http://', HTTPAdapter(max_retries=retries))
         self.s.mount('https://', HTTPAdapter(max_retries=retries))
 
-        self.nocommit = False # set to true if only reading
+        self.commit_on_del = False
 
     def __del__(self):
-        if not self.nocommit:
+        if self.commit_on_del:
             self.conn.commit()
         self.conn.close()
         del self
@@ -63,6 +68,10 @@ class Database():
                  unique(post_id, tag_name))''')
 
             self.c.execute('''CREATE TABLE post_favorites
+                (post_id integer, favorited_user text,
+                 unique(post_id, favorited_user))''')
+
+            self.c.execute('''CREATE TABLE favorites_subset
                 (post_id integer, favorited_user text,
                  unique(post_id, favorited_user))''')
 
@@ -263,7 +272,8 @@ class Database():
                     '''select distinct id from posts
                        where fav_count > 0 and
                        id not in
-                       (select distinct post_id from favorites_meta)''')]
+                       (select distinct post_id from favorites_meta)
+                       order by fav_count desc''')]
                 break
             except sqlite3.OperationalError:
                 print('Encountered lock reading unstored favs. Retries:', retry)
@@ -271,9 +281,6 @@ class Database():
                     raise sqlite3.OperationalError
                 # database probably locked, back off a bit
                 time.sleep(random.random()*(retry+1)**1.2/10)
-
-        print('Shuffling {} posts...'.format(len(remaining)))
-        random.shuffle(remaining)
 
         for r in remaining:
             start = time.time()
@@ -324,7 +331,7 @@ class Database():
         '''
         self.c.execute('''
         select post_id, branch_favs, posts.fav_count from
-        (select post_id, count(post_id) as branch_favs from post_favorites where favorited_user in
+        (select post_id, count(post_id) as branch_favs from favorites_subset where favorited_user in
             (select favorited_user from post_favorites where post_id = ?)
             group by post_id order by count(post_id) desc)
         inner join posts on post_id = posts.id
@@ -377,7 +384,12 @@ class Database():
                                    select file_url from posts where id = ?
                                    ''',
                                    (id,))
-                    urls.append(self.c.fetchall()[0][0])
+                    fetched = self.c.fetchall()
+                    if fetched:
+                        urls.append(fetched[0][0])
+                    else:
+                        urls.append('')
+                        print('No URL for {}!'.format(id))
                     break
                 except sqlite3.OperationalError:
                     print('Encountered lock writing similar row. Retries:', retry)
@@ -400,6 +412,32 @@ class Database():
                     raise sqlite3.OperationalError
                 # database probably locked, back off a bit
                 time.sleep(random.random()*(retry+1)**1.2/10)
+
+    def update_favorites_subset(self, entries=10**6):
+        '''
+        Samples a maximum of one million entries from table post_favorites
+        into table favorites_subset. Dramatically reduces compute time.
+        '''
+        start = time.time()
+        print('Updating favorites samples. This will take several minutes. Deleting old...')
+        self.c.execute('''delete from favorites_subset''')
+        print('Selecting and writing new subset, size {}...'.format(entries))
+        self.c.execute('''insert into favorites_subset
+                        select post_id, favorited_user
+                        from post_favorites
+                        inner join posts on post_id = posts.id
+                        where posts.fav_count >= 30
+                        order by random()
+                        limit ?
+                        ''',
+                        (entries,))
+        self.conn.commit()
+        status = 'Done with subset. Took {}'.format(
+            seconds_to_dhms(time.time()-start))
+        print(status)
+        return status
+
+
 
 
 
