@@ -49,8 +49,8 @@ def get_ten_similar(source_id,
 
         if age > stale_time:
             # this hasn't been updated in a while.
-            print('Cache stale ({} old). Fetching...'.format(
-                seconds_to_dhms(age)
+            print('Cache stale ({} old, threshhold {}). Fetching...'.format(
+                seconds_to_dhms(age), seconds_to_dhms(stale_time)
             ))
             top_ten = compute_similar(source_id,
                                       from_full=from_full,
@@ -162,28 +162,67 @@ def presample_randomly():
 def presample_tree(root_id):
     db = Database()
 
-    traversed = [root_id]
-    unsampled = []
+    traversed_ids = [root_id]
 
-    unsampled = list(get_ten_similar(root_id))
+    # each element is (depth, priority, id)
+    unsampled_posts = [[1, 1, id] for id in get_ten_similar(root_id)]
 
     period = 0
-
     new_count = 0
 
-    while len(unsampled) > 0:
-        next_id = unsampled.pop(0)
-        traversed.append(next_id)
+    while len(unsampled_posts) > 0:
+        # iterate, ordered by smallest depth first,
+        # and highest popularity in conflict.
+        # (popularity is the number of known parents a post has.)
+
+        unsampled_depths = [a[0] for a in unsampled_posts]
+        unsampled_popularities = [a[1] for a in unsampled_posts]
+        unsampled_ids = [a[2] for a in unsampled_posts]
+
+        min_depth = min(unsampled_depths)
+        depth_candidates = []
+        for p in unsampled_posts:
+            depth, priority, id = p
+            if depth == min_depth:
+                depth_candidates.append(p)
+
+        max_priority = min([a[1] for a in depth_candidates])
+        priority_candidates = []
+        for p in depth_candidates:
+            depth, priority, id = p
+            if priority == max_priority:
+                priority_candidates.append(p)
+
+        next_post = priority_candidates[
+            random.randrange(len(priority_candidates))
+            ]
+        unsampled_posts.pop(unsampled_posts.index(next_post))
+        next_depth, next_priority, next_id = next_post
+        traversed_ids.append(next_id)
+        print('Selected post {}. Depth {}, priority {}.'.format(
+            next_id, next_depth, next_priority
+        ))
 
         start = time.time()
-        branches = get_ten_similar(next_id)
+        branch_ids = get_ten_similar(next_id)
         delta = time.time() - start
 
-        for b in branches:
-            if b not in traversed and b not in unsampled:
-                unsampled.append(b)
+        branch_depth = next_depth + 1
 
-        if not period:
+        new = 0
+        for b_id in branch_ids:
+            if b_id in unsampled_ids:
+                # known id, so update popularity and depth (if applicable)
+                i = unsampled_ids.index(b_id)
+                unsampled_posts[i][0] = min(
+                    branch_depth, unsampled_posts[i][0])
+                unsampled_posts[i][1] += 1
+            else:
+                # it's new!
+                unsampled_posts.append([branch_depth, 1, b_id])
+                new += 1
+
+        if not period and delta > 0.05:
             period = delta
         else:
             # ema 20
@@ -192,8 +231,8 @@ def presample_tree(root_id):
                 period = 1 / (1/period * 0.95 + 1/delta * 0.05)
                 new_count += 1
 
-        print('Similar computation took {:5.2f}s. {:5.2f} per minute. {} fetched.'.format(
-            delta, 60/period, new_count
+        print('Similar computation took {:5.2f}s. {:5.2f} per minute. {} fetched. {} ({} new) in queue.'.format(
+            delta, 60/period, new_count, len(unsampled_posts), new
         ))
 
 
