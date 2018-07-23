@@ -11,6 +11,7 @@ except:
 import time
 import random
 import math
+import sys
 
 
 
@@ -281,6 +282,10 @@ def benchmark():
 
 
 if __name__ == '__main__':
-    user_post_id = int(input('Enter post id: '))
-    presample_tree(user_post_id)
+    args = sys.argv[1:]
+    if args:
+        post_id = int(args[0])
+    else:
+        post_id = int(input('Enter post id: '))
+    presample_tree(post_id)
     #benchmark()
