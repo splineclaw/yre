@@ -265,9 +265,12 @@ class Database():
 
     def get_favs(self, id):
         r = self.s.get('https://e621.net/favorite/list_users.json',
-                       params={'id': id})
+                       params={'id': id},
+                       timeout=constants.FAV_REQ_TIMEOUT)
         j = json.loads(r.text)
         favorited_users = j['favorited_users'].split(',')
+        if len(favorited_users) == 0:
+            print('No favs retrieved! Timed out?')
         self.save_favs(id, favorited_users)
 
     def sample_favs(self, fav_limit = constants.MIN_FAVS):
@@ -297,6 +300,8 @@ class Database():
         for r in remaining:
             start = time.time()
             self.get_favs(r)
+            print('Got favs for', r, 'in',
+                  round(time.time()-start, 2), 'seconds')
             for retry in range(10):
                 try:
                     self.conn.commit()
@@ -307,8 +312,6 @@ class Database():
                         raise sqlite3.OperationalError
                     # database probably locked, back off a bit
                     time.sleep(random.random()*(retry+1)**1.2/10)
-            print('Got favs for', r, 'in',
-                  round(time.time()-start, 2), 'seconds')
 
             while time.time() - start < constants.REQUEST_DELAY:
                 time.sleep(0.001)
