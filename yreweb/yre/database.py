@@ -269,16 +269,17 @@ class Database():
         favorited_users = j['favorited_users'].split(',')
         self.save_favs(id, favorited_users)
 
-    def sample_favs(self):
+    def sample_favs(self, fav_limit = 100):
         print('Reading known posts...')
         for retry in range(10):
             try:
                 remaining = [r[0] for r in self.c.execute(
                     '''select distinct id from posts
-                       where fav_count >= 100 and
+                       where fav_count >= ? and
                        id not in
                        (select distinct post_id from favorites_meta)
-                       order by fav_count desc''')]
+                       order by fav_count desc''',
+                       (fav_limit,))]
                 break
             except sqlite3.OperationalError:
                 print('Encountered lock reading unstored favs. Retries:', retry)
@@ -286,6 +287,11 @@ class Database():
                     raise sqlite3.OperationalError
                 # database probably locked, back off a bit
                 time.sleep(random.random()*(retry+1)**1.2/10)
+
+
+        q = len(remaining)
+        print('{:,} posts to get (fav limit {}). Optimal time {}.'.format(
+            q, fav_limit, seconds_to_dhms(q*constants.REQUEST_DELAY)))
 
         for r in remaining:
             start = time.time()
@@ -469,11 +475,12 @@ class Database():
 
 
 
-def main():
+def main(update_posts=True):
     db = Database()
 
     if isfile(db.db_path):
-        db.get_newer_and_recent()
+        if update_posts:
+            db.get_newer_and_recent()
 
     else:
         db.init_db()
@@ -483,4 +490,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main(update_posts=False)
