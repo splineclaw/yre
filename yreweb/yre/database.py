@@ -275,7 +275,7 @@ class Database():
             try:
                 remaining = [r[0] for r in self.c.execute(
                     '''select distinct id from posts
-                       where fav_count > 0 and
+                       where fav_count >= 100 and
                        id not in
                        (select distinct post_id from favorites_meta)
                        order by fav_count desc''')]
