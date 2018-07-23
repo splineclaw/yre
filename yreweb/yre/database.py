@@ -35,6 +35,7 @@ class Database():
         self.db_path = self.path + '/db.sqlite' if not db_path else db_path
         self.conn = sqlite3.connect(self.db_path)
         self.conn.execute("PRAGMA journal_mode=WAL")
+        self.conn.execute("PRAGMA journal_size_limit=104857600")
         self.c = self.conn.cursor()
         self.s = requests.session()
         self.s.headers.update({'user-agent': constants.USER_AGENT})
@@ -269,7 +270,7 @@ class Database():
         favorited_users = j['favorited_users'].split(',')
         self.save_favs(id, favorited_users)
 
-    def sample_favs(self, fav_limit = 100):
+    def sample_favs(self, fav_limit = constants.MIN_FAVS):
         print('Reading known posts...')
         for retry in range(10):
             try:
@@ -335,18 +336,22 @@ class Database():
 
 
 
-    def get_branch_favs(self, post_id):
+    def get_branch_favs(self, post_id, mode='partial'):
         '''
             returns list of tuples. each tuple contains:
             (post_id, branch_favs, post_favs)
+
+            mode is one of 'partial' or 'full'.
+            'partial' uses favorites_subset while 'full' uses post_favorites.
         '''
+        source_db = 'post_favorites' if mode == 'full' else 'favorites_subset'
         self.c.execute('''
         select post_id, branch_favs, posts.fav_count from
-        (select post_id, count(post_id) as branch_favs from favorites_subset where favorited_user in
+        (select post_id, count(post_id) as branch_favs from {} where favorited_user in
             (select favorited_user from post_favorites where post_id = ? order by random() limit 256)
             group by post_id order by count(post_id) desc)
         inner join posts on post_id = posts.id
-        ''',
+        '''.format(source_db),
         (post_id,))
 
         return self.c.fetchall()
@@ -424,7 +429,7 @@ class Database():
                 # database probably locked, back off a bit
                 time.sleep(random.random()*(retry+1)**1.2/10)
 
-    def update_favorites_subset(self, limit=128, fav_min=100, fav_max=9999):
+    def update_favorites_subset(self, limit=128, fav_min=constants.MIN_FAVS, fav_max=9999):
         '''
         Loads only posts over favorite threshhold
         into table favorites_subset. Dramatically reduces compute time.

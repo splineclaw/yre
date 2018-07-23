@@ -9,5 +9,7 @@ urlpatterns = [
     path('<int:source_id>/', views.similar_pics, name='similar_pics'),
     path('recompute/<int:source_id>/', views.recompute_similar,
          name='recompute_similar'),
+    path('full/<int:source_id>/', views.recompute_full,
+         name='recompute_full'),
     path('subset/', views.subset, name='subset')
 ]

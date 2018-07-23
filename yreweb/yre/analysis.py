@@ -1,16 +1,20 @@
 try:
     from .database import Database
     from .utilities import *
+    from . import constants
+
 except:
     from database import Database
     from utilities import *
+    import constants
+
 import time
 import random
 import math
 
 
 
-def get_ten_similar(source_id, stale_time=10**6):
+def get_ten_similar(source_id, stale_time=10**6, from_full=False):
     '''
     Returns a list of the 10 most similar posts to the source.
     Uses database to cache results.
@@ -30,7 +34,9 @@ def get_ten_similar(source_id, stale_time=10**6):
     if len(results) == 0:
         # not yet in db. let's add it!
         print('Not in database. Fetching...')
-        top_ten = compute_similar(source_id, print_enabled=compute_print)
+        top_ten = compute_similar(source_id,
+                                  from_full=from_full,
+                                  print_enabled=compute_print)
 
     else:
         print('Found in database.')
@@ -45,22 +51,27 @@ def get_ten_similar(source_id, stale_time=10**6):
             print('Cache stale ({} old). Fetching...'.format(
                 seconds_to_dhms(age)
             ))
-            top_ten = compute_similar(source_id, print_enabled=compute_print)
+            top_ten = compute_similar(source_id,
+                                      from_full=from_full,
+                                      print_enabled=compute_print)
 
 
     return top_ten
 
 
-def compute_similar(source_id, print_enabled=False):
+def compute_similar(source_id, from_full=False, print_enabled=False):
     '''
     computes top 10 similar to the source, saves it to the database,
     and returns their ids as a list
     '''
 
+
     min_branch_favs = 2
-    min_post_favs = 10
+    min_post_favs = constants.MIN_FAVS
 
     print('Finding similar to', source_id)
+    if from_full:
+        print('FROM FULL DATASET ENABLED! Get comfortable, this will take a while.')
 
     db = Database()
 
@@ -84,8 +95,8 @@ def compute_similar(source_id, print_enabled=False):
             continue
         # branch_favs / post_favs
         # the fraction of target favoriters who are also source favoriters
-        relevance = r[1]/min(r[2],100)
-
+        denom = r[2] if from_full else min(r[2], constants.MIN_FAVS)
+        relevance = r[1]/denom
         # branch_favs / source_favs
         # the fraction of source favoriters who are also target favoriters
         popularity = r[1] / source_favs
@@ -148,7 +159,47 @@ def presample_similar():
             delta, 60/period
         ))
 
+def benchmark():
+    post_ids = [
+        1402994, # ~5300 favs
+        1267110, # ~2000 favs
+        1453248, # ~1000 favs
+        1509866, # ~500 favs
+        548809, # ~250 favs
+        1419991, # ~100 favs
+        688954, # ~75 favs
+        298119, # ~50 favs
+        964535, # ~25 favs
+        222936 # ~10 favs
+    ][::3]
+    repeats = 3
+
+    times_by_post = []
+    for id in post_ids:
+        times_by_repeat = []
+        for r in range(repeats):
+            start = time.time()
+            get_ten_similar(id, 0)
+            dt = time.time() - start
+            times_by_repeat.append(dt)
+        times_by_post.append(times_by_repeat)
+
+    averages = [sum(times)/repeats for times in times_by_post]
+    average = sum(averages)/len(post_ids)
+
+    for id, t in zip(post_ids, averages):
+        print('id {:7d} took {:5.2f}s on average ({} repeats)'.format(
+            id, t, repeats
+        ))
+
+    print('Average {:7.4}s'.format(average))
+
+    return average
+
+
+
 
 
 if __name__ == '__main__':
-    presample_similar()
+    #presample_similar()
+    benchmark()

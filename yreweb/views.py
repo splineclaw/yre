@@ -20,9 +20,9 @@ def urls_list(request, source_id):
     urls = db.get_urls_for_ids(similar_ids)
     return(HttpResponse(str(urls)))
 
-def similar_pics(request, source_id, stale_time=10**4):
+def similar_pics(request, source_id, stale_time=10**4, full=False):
     start = time.time()
-    similar_ids = get_ten_similar(source_id, stale_time)[:8]
+    similar_ids = get_ten_similar(source_id, stale_time, from_full=full)[:8]
     db = Database()
     urls = db.get_urls_for_ids(similar_ids)
 
@@ -45,6 +45,9 @@ def similar_pics(request, source_id, stale_time=10**4):
 
 def recompute_similar(request, source_id):
     return similar_pics(request, source_id, stale_time=0)
+
+def recompute_full(request, source_id):
+    return similar_pics(request, source_id, stale_time=0, full=True)
 
 def subset(request):
     db = Database()
