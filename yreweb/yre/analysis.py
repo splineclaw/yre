@@ -158,6 +158,7 @@ def presample_randomly():
             delta, 60/period
         ))
 
+
 def presample_tree(root_id):
     db = Database()
 
@@ -167,6 +168,8 @@ def presample_tree(root_id):
     unsampled = list(get_ten_similar(root_id))
 
     period = 0
+
+    new_count = 0
 
     while len(unsampled) > 0:
         next_id = unsampled.pop(0)
@@ -185,10 +188,12 @@ def presample_tree(root_id):
         else:
             # ema 20
             # geometric average
-            period = 1 / (1/period * 0.95 + 1/delta * 0.05)
+            if delta > 0.05:  # omit cache hits
+                period = 1 / (1/period * 0.95 + 1/delta * 0.05)
+                new_count += 1
 
-        print('Similar computation took {:5.2f}s. {:5.2f} per minute.'.format(
-            delta, 60/period
+        print('Similar computation took {:5.2f}s. {:5.2f} per minute. {} fetched.'.format(
+            delta, 60/period, new_count
         ))
 
 
