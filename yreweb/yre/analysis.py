@@ -142,7 +142,7 @@ def presample_randomly():
     need_update = db.find_similar_need_update()
     random.shuffle(need_update)
 
-    period = 0
+    period = -1
 
     for id in need_update:
         start = time.time()
@@ -167,7 +167,7 @@ def presample_tree(root_id):
     # each element is (depth, priority, id)
     unsampled_posts = [[1, 1, id] for id in get_ten_similar(root_id)]
 
-    period = 0
+    period = -1
     new_count = 0
 
     while len(unsampled_posts) > 0:
@@ -186,7 +186,7 @@ def presample_tree(root_id):
             if depth == min_depth:
                 depth_candidates.append(p)
 
-        max_priority = min([a[1] for a in depth_candidates])
+        max_priority = max([a[1] for a in depth_candidates])
         priority_candidates = []
         for p in depth_candidates:
             depth, priority, id = p
@@ -196,7 +196,7 @@ def presample_tree(root_id):
         next_post = priority_candidates[
             random.randrange(len(priority_candidates))
             ]
-        unsampled_posts.pop(unsampled_posts.index(next_post))
+
         next_depth, next_priority, next_id = next_post
         traversed_ids.append(next_id)
         print('Selected post {}. Depth {}, priority {}.'.format(
@@ -211,7 +211,7 @@ def presample_tree(root_id):
 
         new = 0
         for b_id in branch_ids:
-            if b_id in unsampled_ids:
+            if b_id in unsampled_ids and b_id != next_id:
                 # known id, so update popularity and depth (if applicable)
                 i = unsampled_ids.index(b_id)
                 unsampled_posts[i][0] = min(
@@ -221,9 +221,12 @@ def presample_tree(root_id):
                 # it's new!
                 unsampled_posts.append([branch_depth, 1, b_id])
                 new += 1
+        # now it's safe to remove the post
+        unsampled_posts.pop(unsampled_posts.index(next_post))
 
-        if not period and delta > 0.05:
-            period = delta
+        if period == -1:
+            if delta > 0.05:
+                period = delta
         else:
             # ema 20
             # geometric average
@@ -231,8 +234,8 @@ def presample_tree(root_id):
                 period = 1 / (1/period * 0.95 + 1/delta * 0.05)
                 new_count += 1
 
-        print('Similar computation took {:5.2f}s. {:5.2f} per minute. {} fetched. {} ({} new) in queue.'.format(
-            delta, 60/period, new_count, len(unsampled_posts), new
+        print('Similar computation took {:5.2f}s. {:5.2f} per minute. {} fetched, {} traversed. {} ({} new) in queue.'.format(
+            delta, 60/period, new_count, len(traversed_ids), len(unsampled_posts), new
         ))
 
 
