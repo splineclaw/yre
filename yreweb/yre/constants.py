@@ -1,4 +1,4 @@
-VERSION = '0.0.05'
+VERSION = '0.0.06'
 
 USER_AGENT = 'yre {} (splineclaw)'.format(VERSION)
 
