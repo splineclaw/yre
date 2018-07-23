@@ -234,5 +234,6 @@ def benchmark():
 
 
 if __name__ == '__main__':
-    presample_tree(int(input('Enter post id. :')))
+    user_post_id = int(input('Enter post id: '))
+    presample_tree(user_post_id)
     #benchmark()
