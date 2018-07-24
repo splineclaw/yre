@@ -3,6 +3,7 @@ from django.http import HttpResponse, HttpResponseRedirect
 
 from .yre.analysis import get_ten_similar
 from .yre.database import Database
+from .yre import constants
 
 import time
 
@@ -20,7 +21,9 @@ def urls_list(request, source_id):
     urls = db.get_urls_for_ids(similar_ids)
     return(HttpResponse(str(urls)))
 
-def similar_pics(request, source_id, stale_time=10**4, full=False):
+def similar_pics(request, source_id,
+                 stale_time=constants.DEFAULT_STALE_TIME,
+                 full=False):
     start = time.time()
     similar_ids = get_ten_similar(source_id, stale_time, from_full=full)[:8]
     db = Database()
