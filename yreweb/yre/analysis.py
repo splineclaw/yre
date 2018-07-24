@@ -2,11 +2,13 @@ try:
     from .database import Database
     from .utilities import *
     from . import constants
+    from . import images
 
 except:
     from database import Database
     from utilities import *
     import constants
+    import images
 
 import time
 import random
@@ -160,7 +162,7 @@ def presample_randomly():
         ))
 
 
-def presample_tree(root_id):
+def presample_tree(root_id, download='True'):
     db = Database()
 
     traversed_ids = [root_id]
@@ -199,6 +201,8 @@ def presample_tree(root_id):
             ]
 
         next_depth, next_priority, next_id = next_post
+        if download:
+            images.image_with_delay(next_id)
         traversed_ids.append(next_id)
         print('Selected post {}. Depth {}, priority {}.'.format(
             next_id, next_depth, next_priority
