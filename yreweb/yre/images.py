@@ -44,15 +44,8 @@ def get_local(post_id, return_type='filename'):
     prefix = 'https://static1.e621.net/data/'
     probable_sample_url = prefix + 'sample/' + file_url[len(prefix):-3] + 'jpg'
 
-    r = 0
-    i = 0
-    while r not in (200, list(range(400,425))):
-        if i:
-            time.sleep(1)
-        r = urllib.request.urlopen(probable_sample_url).getcode()
-        i += 1
-
-    if r == 200:
+    try:
+        urllib.request.urlopen(probable_sample_url)
         # success! time to download
         for attempt in range(10):
             try:
@@ -64,8 +57,7 @@ def get_local(post_id, return_type='filename'):
                     attempt + 1, post_id
                 ))
                 time.sleep(0.2*1.5**attempt)
-
-    else:
+    except urllib.error.HTTPError:
         print('Could not download preview for', post_id)
         copyfile(previews_path+'error.jpg',local_image)
         if return_type == 'filename':
