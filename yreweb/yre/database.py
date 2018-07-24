@@ -249,7 +249,7 @@ class Database():
                         raise sqlite3.OperationalError
                     print('Encountered lock saving favs. Retries:', retry)
                     # database probably locked, back off a bit
-                    sleep = random.random + 0.1
+                    sleep = random.random() + 0.1
                     sleep *= 1.2**retry
                     time.sleep(sleep)
 
