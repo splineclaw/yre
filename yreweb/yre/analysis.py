@@ -85,6 +85,9 @@ def compute_similar(source_id, from_full=False, print_enabled=False):
     print('Finding common favorites...')
     results = db.get_branch_favs(source_id)
 
+    if not results:
+        return None
+
     source_favs = max([r[1] for r in results])
 
     print('Computing...')
