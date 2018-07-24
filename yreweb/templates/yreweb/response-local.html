@@ -1,0 +1,18 @@
+{% load static %}
+
+<script src="{% static "yreweb/masonry.pkgd.min.js" %}"></script>
+<script src="{% static "yreweb/imagesloaded.pkgd.min.js" %}"></script>
+<script src="{% static "yreweb/response.js" %}"></script>
+<title>id {{source}}</title>
+<head>
+<link rel="stylesheet" type="text/css" href="{% static "yreweb/response.css" %}">
+</head>
+<div class="grid-sizer">
+<div class="grid">
+{% for id, name, url in zipped %}
+    <div class="grid-item">
+      <a href="{{url}}"><img class='result' src="{% static "yreweb/previews/"|add:name %}" title="{{id}}"></a>
+    </div>
+{% endfor %}
+</div>
+</div>
