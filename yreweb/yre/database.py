@@ -268,10 +268,14 @@ class Database():
                        params={'id': id},
                        timeout=constants.FAV_REQ_TIMEOUT)
         j = json.loads(r.text)
+        if 'favorited_users' not in j:
+            print('No favs retrieved! Timed out?')
+            return
         favorited_users = j['favorited_users'].split(',')
         if len(favorited_users) == 0:
             print('No favs retrieved! Timed out?')
         self.save_favs(id, favorited_users)
+        return
 
     def sample_favs(self, fav_limit = constants.MIN_FAVS):
         print('Reading known posts...')
