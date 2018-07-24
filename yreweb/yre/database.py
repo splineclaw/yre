@@ -236,7 +236,7 @@ class Database():
 
     def save_favs(self, post_id, favorited_users):
         for u in favorited_users:
-            for retry in range(10):
+            for retry in range(20):
                 try:
                     self.c.execute(
                                   '''INSERT OR IGNORE INTO
@@ -247,8 +247,12 @@ class Database():
                 except sqlite3.OperationalError:
                     if retry == 9:
                         raise sqlite3.OperationalError
+                    print('Encountered lock saving favs. Retries:', retry)
                     # database probably locked, back off a bit
-                    time.sleep(random.random()*(retry+1)**1.2/10)
+                    sleep = random.random + 0.1
+                    sleep *= 1.2**retry
+                    time.sleep(sleep)
+
         for retry in range(10):
             try:
                 self.c.execute(
@@ -260,6 +264,7 @@ class Database():
             except sqlite3.OperationalError:
                 if retry == 9:
                     raise sqlite3.OperationalError
+                print('Encountered lock saving favs metadata. Retries:', retry)
                 # database probably locked, back off a bit
                 time.sleep(random.random()*(retry+1)**1.2/10)
 
