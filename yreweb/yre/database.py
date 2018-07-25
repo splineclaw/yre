@@ -233,7 +233,6 @@ class Database():
         return [id[0] for id in self.c.execute(
             '''select id from posts''')]
 
-
     def save_favs(self, post_id, favorited_users):
         for u in favorited_users:
             for retry in range(20):
@@ -245,7 +244,7 @@ class Database():
                                   (post_id, u))
                     break
                 except sqlite3.OperationalError:
-                    if retry == 9:
+                    if retry == 19:
                         raise sqlite3.OperationalError
                     print('Encountered lock saving favs. Retries:', retry)
                     # database probably locked, back off a bit
@@ -305,12 +304,22 @@ class Database():
         q = len(remaining)
         print('{:,} posts to get (fav limit {}). Optimal time {}.'.format(
             q, fav_limit, seconds_to_dhms(q*constants.REQUEST_DELAY)))
+            
+        allstart = time.time()
+        qty = 0
 
         for r in remaining:
             start = time.time()
             self.get_favs(r)
+            qty += 1
             print('Got favs for', r, 'in',
                   round(time.time()-start, 2), 'seconds')
+            if qty % 20 == 0:
+                dt = time.time() - allstart
+                rate = dt/qty
+                eta = (q-qty) * rate
+                print('Total {} in {:.2f}s: {:.3f}s/post. {} remain.'.format(
+                        qty, dt, rate, seconds_to_dhms(eta)))
             for retry in range(10):
                 try:
                     self.conn.commit()
@@ -345,8 +354,6 @@ class Database():
                 # database probably locked, back off a bit
                 time.sleep(random.random()*(retry+1)**1.2/10)
         return remaining
-
-
 
     def get_branch_favs(self, post_id, mode='partial'):
         '''
@@ -441,14 +448,15 @@ class Database():
                 # database probably locked, back off a bit
                 time.sleep(random.random()*(retry+1)**1.2/10)
 
-    def update_favorites_subset(self, limit=128, fav_min=constants.MIN_FAVS, fav_max=9999):
+    def update_favorites_subset(self, limit=constants.SUBSET_FAVS_PER_POST, fav_min=constants.MIN_FAVS, fav_max=9999):
         '''
         Loads only posts over favorite threshhold
         into table favorites_subset. Dramatically reduces compute time.
         '''
+        print('Updating favorites subset. This will take several minutes.')
         start = time.time()
 
-        print('Updating favorites subset. This will take several minutes. Deleting old...')
+        print('Deleting old...')
         self.c.execute('''delete from favorites_subset''')
 
         print('Selecting and writing new subset, fav range {}-{}, limit {:,}...'.format(
@@ -481,6 +489,8 @@ class Database():
             fav_min, limit, seconds_to_dhms(time.time()-start),
             (time.time()-start)*1000/q)
         print(status)
+        print('Vacuuming...')
+        self.c.execute('''vacuum''')
         return status
 
     def get_favcount_stats(self, fav_count):
@@ -488,6 +498,26 @@ class Database():
                        (fav_count,))
         return self.c.fetchall()[0][0]
 
+    def get_favcount(self, post_id):
+        self.c.execute('''select fav_count from posts where id=?''',
+                        (post_id,))
+        return self.c.fetchall()[0][0]
+        
+    def get_overlap(self, a, b):
+        '''
+        Returns the quantity of users who favorited both post a and b.
+        '''
+        self.c.execute(
+            '''
+            select count(favorited_user) from post_favorites
+            where post_id = ? and favorited_user in
+            (        
+            select favorited_user from post_favorites
+            where post_id = ?
+            )
+            ''',
+            (a, b,))
+        return self.c.fetchall()[0][0]
 
 
 

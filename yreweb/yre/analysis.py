@@ -14,6 +14,7 @@ import time
 import random
 import math
 import sys
+import itertools
 
 
 
@@ -245,9 +246,32 @@ def presample_tree(root_id, download='True'):
         print('Similar computation took {:5.2f}s. {:5.2f} per minute. {} fetched, {} traversed. {} ({} new) in queue.'.format(
             delta, 60/period, new_count, len(traversed_ids), len(unsampled_posts), new
         ))
+        
+def sym_sim(a, b):
+    '''
+    Returns symmetric similarity between posts a and b,
+    defined as the product of:
+    fraction of the users who faved a who faved b
+    fraction of the users who faved b who faved a
+    '''
+    print('Similarity between {} and {}'.format(a,b))
+    db = Database()
+    if not db.have_favs_for_id(a):
+        db.get_favs(a)
+    if not db.have_favs_for_id(b):
+        db.get_favs(b)
+    overlap = db.get_overlap(a, b)
+    a_favs = db.get_favcount(a)
+    b_favs = db.get_favcount(b)
+    
+    print('a_favs {} overlap {} b_favs {}'.format(
+        a_favs, overlap, b_favs))
+        
+    
+    return overlap**2 / a_favs / b_favs
 
 
-def benchmark():
+def single_benchmark():
     post_ids = [
         1402994,  # ~5300 favs
         1267110,  # ~2000 favs
@@ -284,9 +308,44 @@ def benchmark():
 
     return average
 
+def symmetric_benchmark():
+    post_ids = [
+        1402994,  # ~5300 favs
+        1267110,  # ~2000 favs
+        1453248,  # ~1000 favs
+        1509866,  # ~500 favs
+        548809,   # ~250 favs
+        1419991,  # ~100 favs
+        688954,   # ~75 favs
+        298119,   # ~50 favs
+        964535,   # ~25 favs
+        222936    # ~10 favs
+    ]
+    
+    combos = list(itertools.product(post_ids, post_ids))
 
+    times_by_combo = []
+    similarities = []
+    for combo in combos:
+        a, b = combo
+        start = time.time()
+        
+        similarities.append(sym_sim(a,b))
+        
+        dt = time.time() - start
+        times_by_combo.append(dt)
 
+    average = sum(times_by_combo)/len(times_by_combo)
 
+    for dt, combo, s in zip(times_by_combo, combos, similarities):
+        a, b = combo
+        print('ids {}+{} (sim {:5f}) took {:7.4f}s'.format(
+            a, b, s, dt
+        ))
+        
+    print('Took {:.4f}s for {} combos: {:8.4f}ms per combo.'.format(
+          sum(times_by_combo), len(times_by_combo), average*1000)
+         )
 
 if __name__ == '__main__':
     args = sys.argv[1:]
@@ -295,4 +354,3 @@ if __name__ == '__main__':
     else:
         post_id = int(input('Enter post id: '))
     presample_tree(post_id)
-    #benchmark()
