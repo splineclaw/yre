@@ -60,10 +60,11 @@ def get_local(post_id, return_type='filename'):
     except urllib.error.HTTPError:
         print('Could not download preview for', post_id)
         copyfile(previews_path+'error.jpg',local_image)
-        if return_type == 'filename':
-            return filename
-        elif return_type == 'cachehit':
-            return (filename, 0)
+        
+    if return_type == 'filename':
+        return filename
+    elif return_type == 'cachehit':
+        return (filename, 0)
 
 def image_with_delay(post_id):
     start = time.time()
