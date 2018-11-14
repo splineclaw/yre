@@ -91,6 +91,11 @@ class Database():
                            top_7 integer, top_8 integer, top_9 integer,
                            top_10 integer)''')
 
+            self.c.execute('''CREATE TABLE sym_similarity
+                           (low_id integer primary key, high_id integer,
+                           common integer,
+                           add_sim real, mult_sim real)''')
+
             self.conn.commit()
             print("Created database.")
         except sqlite3.OperationalError:
@@ -304,7 +309,7 @@ class Database():
         q = len(remaining)
         print('{:,} posts to get (fav limit {}). Optimal time {}.'.format(
             q, fav_limit, seconds_to_dhms(q*constants.REQUEST_DELAY)))
-            
+
         allstart = time.time()
         qty = 0
 
@@ -502,7 +507,7 @@ class Database():
         self.c.execute('''select fav_count from posts where id=?''',
                         (post_id,))
         return self.c.fetchall()[0][0]
-        
+
     def get_overlap(self, a, b):
         '''
         Returns the quantity of users who favorited both post a and b.
@@ -511,13 +516,24 @@ class Database():
             '''
             select count(favorited_user) from post_favorites
             where post_id = ? and favorited_user in
-            (        
+            (
             select favorited_user from post_favorites
             where post_id = ?
             )
             ''',
             (a, b,))
         return self.c.fetchall()[0][0]
+
+    def calc_and_put_sym_sim(self, low_id, high_id):
+        '''
+        Computes and inserts into the database the symmetric similarity between
+        two posts, low_id and high_id.
+        Fetches favs if necessary.
+        '''
+        if low_id > high_id:
+            low_id, high_id = high_id, low_id
+
+
 
 
 

@@ -246,13 +246,37 @@ def presample_tree(root_id, download='True'):
         print('Similar computation took {:5.2f}s. {:5.2f} per minute. {} fetched, {} traversed. {} ({} new) in queue.'.format(
             delta, 60/period, new_count, len(traversed_ids), len(unsampled_posts), new
         ))
-        
-def sym_sim(a, b):
+
+def sym_sims(a, b, verbose=False):
     '''
-    Returns symmetric similarity between posts a and b,
-    defined as the product of:
-    fraction of the users who faved a who faved b
-    fraction of the users who faved b who faved a
+    Takes as argument two post ids, a and b.
+
+    Returns a tuple:
+        quantity of mutual favorites,
+        additive symmetric similarity,
+        multiplicative symmetric similarity
+
+    Quantity of mutual favorites is the number of users who have favorited both a and b.
+
+    Let
+    m = mutual favorites
+    a = quantity of favorites of post a (a favcount)
+    b = quantity of favorites of post b (b favcount)
+
+    add_sim = m / (a + b - m)
+
+    mult_sim = m**2 / (a * b)
+
+
+    In words:
+    Additive symmetric similarity is the ratio of the quantity of users who favorited
+        both post a and b to the quantity of users who favorited either post a or post b.
+
+    Multiplicative symmetric similarity is the product of the ratio of the quantity of users
+        who favorited both post a and b to the total quantity of users who favorited post a
+        and the ratio of the quantity of users who favorited both post a and b to the
+        total quantity of users who favorited post b.
+
     '''
     print('Similarity between {} and {}'.format(a,b))
     db = Database()
@@ -263,12 +287,30 @@ def sym_sim(a, b):
     overlap = db.get_overlap(a, b)
     a_favs = db.get_favcount(a)
     b_favs = db.get_favcount(b)
-    
-    print('a_favs {} overlap {} b_favs {}'.format(
-        a_favs, overlap, b_favs))
-        
-    
-    return overlap**2 / a_favs / b_favs
+
+    add_sim = overlap / (a_favs + b_favs - overlap)
+
+    mult_sim = overlap**2 / (a_favs * b_favs)
+
+    if verbose:
+
+        print('a_favs {} overlap {} b_favs {}'.format(
+            a_favs, overlap, b_favs))
+
+        print('mutual {}    add_sim {:4f}   mult_sim {:4f}'.format(
+            overlap, add_sim, mult_sim
+        ))
+
+    if add_sim > 1:
+        print("ADD_SIM FOR {}, {} IS > 1  ({})".format(a, b, add_sim))
+        add_sim = 1
+
+    if mult_sim > 1:
+        print("MULT_SIM FOR {}, {} IS > 1  ({})".format(a, b, mult_sim))
+        mult_sim = 1
+
+    return(overlap, add_sim, mult_sim)
+
 
 
 def single_benchmark():
@@ -321,7 +363,7 @@ def symmetric_benchmark():
         964535,   # ~25 favs
         222936    # ~10 favs
     ]
-    
+
     combos = list(itertools.product(post_ids, post_ids))
 
     times_by_combo = []
@@ -329,28 +371,41 @@ def symmetric_benchmark():
     for combo in combos:
         a, b = combo
         start = time.time()
-        
-        similarities.append(sym_sim(a,b))
-        
+
+        similarities.append(sym_sims(a,b))
+
         dt = time.time() - start
         times_by_combo.append(dt)
+
 
     average = sum(times_by_combo)/len(times_by_combo)
 
     for dt, combo, s in zip(times_by_combo, combos, similarities):
         a, b = combo
         print('ids {}+{} (sim {:5f}) took {:7.4f}s'.format(
-            a, b, s, dt
+            a, b, s[2], dt
         ))
-        
+
     print('Took {:.4f}s for {} combos: {:8.4f}ms per combo.'.format(
           sum(times_by_combo), len(times_by_combo), average*1000)
          )
 
+    for id in post_ids:
+        times = []
+        for dt, combo in zip(times_by_combo, combos):
+            if id in combo:
+                times.append(dt)
+        print('Post {} averages {:7.4f}s'.format(id,sum(times)/len(times)))
+
 if __name__ == '__main__':
     args = sys.argv[1:]
     if args:
-        post_id = int(args[0])
+        if args[0] == 'bench':
+            symmetric_benchmark()
+            post_id = 0
+        else:
+            post_id = int(args[0])
     else:
         post_id = int(input('Enter post id: '))
-    presample_tree(post_id)
+    if post_id:
+        presample_tree(post_id)
