@@ -2,7 +2,7 @@ import requests
 from requests.packages.urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 import json
-import sqlite3
+import psycopg2
 
 import json
 import time
@@ -30,12 +30,9 @@ class Database():
     - better remote error handling
     - fix post sampling progress indication when using stop condition
     '''
-    def __init__(self, db_path=None):
-        self.path = dirname(abspath(inspect.getfile(inspect.currentframe())))
-        self.db_path = self.path + '/db.sqlite' if not db_path else db_path
-        self.conn = sqlite3.connect(self.db_path)
-        self.conn.execute("PRAGMA journal_mode=WAL")
-        self.conn.execute("PRAGMA journal_size_limit=104857600")
+    def __init__(self):
+        self.conn = psycopg2.connect("dbname=yre user=postgres")
+
         self.c = self.conn.cursor()
         self.s = requests.session()
         self.s.headers.update({'user-agent': constants.USER_AGENT})
@@ -57,69 +54,59 @@ class Database():
         del self
 
     def init_db(self):
-        try:
-            self.c.execute('''CREATE TABLE posts
-                (id integer primary key, status text, fav_count integer, score integer, rating text,
-                uploaded integer, updated real, md5 text,
-                file_url text, sample_available integer, preview_available integer,
-                unique(id))''')
+        self.c.execute('''CREATE TABLE IF NOT EXISTS posts
+            (id integer primary key, status text, fav_count integer, score integer, rating text,
+            uploaded bigint, updated bigint, md5 text,
+            full_url text, sample_url text, preview_url text,
+            unique(id))''')
 
-            self.c.execute('''CREATE TABLE post_tags
-                (post_id integer, tag_name text,
-                 unique(post_id, tag_name))''')
+        self.c.execute('''CREATE TABLE IF NOT EXISTS post_tags
+            (post_id integer, tag_name text,
+             unique(post_id, tag_name))''')
 
-            self.c.execute('''CREATE TABLE post_favorites
-                (post_id integer, favorited_user text,
-                 unique(post_id, favorited_user))''')
+        self.c.execute('''CREATE TABLE IF NOT EXISTS post_favorites
+            (post_id integer, favorited_user text,
+             unique(post_id, favorited_user))''')
 
-            self.c.execute('''CREATE TABLE favorites_subset
-                (post_id integer, favorited_user text,
-                 unique(post_id, favorited_user))''')
+        self.c.execute('''CREATE TABLE IF NOT EXISTS favorites_subset
+            (post_id integer, favorited_user text,
+             unique(post_id, favorited_user))''')
 
-            self.c.execute('''CREATE TABLE favorites_meta
-                (post_id integer, updated real,
-                 unique(post_id))''')
+        self.c.execute('''CREATE TABLE IF NOT EXISTS favorites_meta
+            (post_id integer, updated bigint,
+             unique(post_id))''')
 
-            self.c.execute('''CREATE TABLE tags
-                (id integer primary key, name text,
-                 count integer, type integer)''')
+        self.c.execute('''CREATE TABLE IF NOT EXISTS tags
+            (id integer primary key, name text,
+             count integer, type integer)''')
 
-            self.c.execute('''CREATE TABLE similar
-                           (source_id integer primary key, updated real,
-                           top_1 integer, top_2 integer, top_3 integer,
-                           top_4 integer, top_5 integer, top_6 integer,
-                           top_7 integer, top_8 integer, top_9 integer,
-                           top_10 integer)''')
+        self.c.execute('''CREATE TABLE IF NOT EXISTS similars
+                       (source_id integer primary key, updated bigint,
+                       top_1 integer, top_2 integer, top_3 integer,
+                       top_4 integer, top_5 integer, top_6 integer,
+                       top_7 integer, top_8 integer, top_9 integer,
+                       top_10 integer)''')
 
-            self.c.execute('''CREATE TABLE sym_similarity
-                           (low_id integer primary key, high_id integer,
-                           common integer,
-                           add_sim real, mult_sim real)''')
+        self.c.execute('''CREATE TABLE IF NOT EXISTS sym_similarity
+                       (low_id integer primary key, high_id integer,
+                       common integer,
+                       add_sim real, mult_sim real)''')
 
-            self.conn.commit()
-            print("Created database.")
-        except sqlite3.OperationalError:
-            print("Database exists.")
+        self.conn.commit()
+        print("Database ready.")
 
     def save_tags(self, post_id, tag_string):
         '''
         todo: search for tags in db that are not in current tags
         '''
+        print(post_id, tag_string)
         tags = tag_string.split(' ')
 
         for tag in tags:
-            for retry in range(10):
-                try:
-                    self.c.execute('''INSERT OR IGNORE INTO post_tags(post_id, tag_name) VALUES
-                                      (?,?)''',
-                                      (post_id,
-                                      tag))
-                    break
-                except sqlite3.OperationalError:
-                    if retry == 9:
-                        raise sqlite3.OperationalError
-                    # database probably locked, back off a bit
-                    time.sleep(random.random()*(retry+1)**1.2/10)
+            self.c.execute('''INSERT INTO post_tags(post_id, tag_name) VALUES
+                              (%s, %s) ON CONFLICT DO NOTHING''',
+                              (post_id,
+                              tag))
 
     def save_post(self, post_dict, updated=None):
         if not updated:
@@ -136,27 +123,24 @@ class Database():
         if 'preview_url' in d and d['preview_url'] != d['file_url']:
             has_preview = 1
 
-        for retry in range(10):
-            try:
-                self.c.execute('''INSERT OR REPLACE INTO posts VALUES
-                              (?,?,?,?,?,?,?,?,?,?,?)''',
-                               (d['id'],
-                                d['status'],
-                                d['fav_count'],
-                                d['score'],
-                                d['rating'],
-                                d['created_at']['s'],
-                                updated,
-                                d['md5'] if 'md5' in d else 0,
-                                d['file_url'] if 'file_url' in d else 0,
-                                has_sample,
-                                has_preview))
-                break
-            except sqlite3.OperationalError:
-                if retry == 9:
-                    raise sqlite3.OperationalError
-                # database probably locked, back off a bit
-                time.sleep(random.random()*(retry+1)**1.2/10)
+        self.c.execute('''INSERT INTO posts VALUES
+                      (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                      ON CONFLICT (id) DO UPDATE SET
+                      fav_count = EXCLUDED.fav_count,
+                      score = EXCLUDED.score,
+                      rating = EXCLUDED.rating,
+                      updated = EXCLUDED.updated''',
+                       (d['id'],
+                        d['status'],
+                        d['fav_count'],
+                        d['score'],
+                        d['rating'],
+                        d['created_at']['s'],
+                        updated,
+                        d['md5'] if 'md5' in d else 0,
+                        d['file_url'] if 'file_url' in d else 0,
+                        d['sample_url'] if 'sample_url' in d else 0,
+                        d['preview_url' if 'preview_url' in d else 0]))
 
     def get_all_posts(self, before_id=None, after_id=0, stop_count=None):
         max_id = None
@@ -245,7 +229,7 @@ class Database():
                     self.c.execute(
                                   '''INSERT OR IGNORE INTO
                                      post_favorites(post_id, favorited_user)
-                                     VALUES (?,?)''',
+                                     VALUES (%s,%s)''',
                                   (post_id, u))
                     break
                 except sqlite3.OperationalError:
@@ -262,7 +246,7 @@ class Database():
                 self.c.execute(
                               '''INSERT OR IGNORE INTO
                                  favorites_meta(post_id, updated)
-                                 VALUES (?,?)''',
+                                 VALUES (%s,%s)''',
                               (post_id, time.time()))
                 break
             except sqlite3.OperationalError:
@@ -278,11 +262,11 @@ class Database():
                        timeout=constants.FAV_REQ_TIMEOUT)
         j = json.loads(r.text)
         if 'favorited_users' not in j:
-            print('No favs retrieved! Timed out?')
+            print('No favs retrieved! Timed out%s')
             return
         favorited_users = j['favorited_users'].split(',')
         if len(favorited_users) == 0:
-            print('No favs retrieved! Timed out?')
+            print('No favs retrieved! Timed out%s')
         self.save_favs(id, favorited_users)
         return
 
@@ -292,7 +276,7 @@ class Database():
             try:
                 remaining = [r[0] for r in self.c.execute(
                     '''select distinct id from posts
-                       where fav_count >= ? and
+                       where fav_count >= %s and
                        id not in
                        (select distinct post_id from favorites_meta)
                        order by fav_count desc''',
@@ -350,7 +334,7 @@ class Database():
                 remaining = [r[0] for r in self.c.execute(
                     '''select distinct post_id from favorites_meta
                        where post_id not in
-                       (select distinct source_id from similar)''')]
+                       (select distinct source_id from similars)''')]
                 break
             except sqlite3.OperationalError:
                 print('Encountered lock reading unstored favs. Retries:', retry)
@@ -372,7 +356,7 @@ class Database():
         self.c.execute('''
         select post_id, branch_favs, posts.fav_count from
         (select post_id, count(post_id) as branch_favs from {} where favorited_user in
-            (select favorited_user from post_favorites where post_id = ? order by random() limit 256)
+            (select favorited_user from post_favorites where post_id = %s order by random() limit 256)
             group by post_id order by count(post_id) desc)
         inner join posts on post_id = posts.id
         '''.format(source_db),
@@ -384,8 +368,9 @@ class Database():
         for retry in range(10):
             try:
                 self.c.execute('''
-                               insert or replace into similar
-                               values (?,?,?,?,?,?,?,?,?,?,?,?)
+                               insert into similars
+                               values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                            ON CONFLICT DO UPDATE
                                ''',
                                (source_id, update_time, *similar_list))
                 self.conn.commit()
@@ -404,7 +389,7 @@ class Database():
         for retry in range(10):
             try:
                 self.c.execute('''
-                               select * from favorites_meta where post_id = ?
+                               select * from favorites_meta where post_id = %s
                                ''',
                                (source_id,))
                 return self.c.fetchall()
@@ -421,7 +406,7 @@ class Database():
             for retry in range(10):
                 try:
                     self.c.execute('''
-                                   select file_url from posts where id = ?
+                                   select file_url from posts where id = %s
                                    ''',
                                    (id,))
                     fetched = self.c.fetchall()
@@ -443,7 +428,7 @@ class Database():
     def select_similar(self, source_id):
         for retry in range(10):
             try:
-                self.c.execute('''select * from similar where source_id = ?''',
+                self.c.execute('''select * from similars where source_id = %s''',
                              (source_id,))
                 return self.c.fetchall()
             except sqlite3.OperationalError:
@@ -482,10 +467,10 @@ class Database():
                            insert into favorites_subset
                            select post_id, favorited_user from post_favorites
                                 inner join posts on post_id = posts.id
-                                where post_id = ? and
-                                posts.fav_count >= ? and posts.fav_count <= ?
+                                where post_id = %s and
+                                posts.fav_count >= %s and posts.fav_count <= %s
                                 order by random()
-                                limit ?''',
+                                limit %s''',
                                 (id, fav_min, fav_max, limit))
 
         print('Committing changes.')
@@ -499,12 +484,12 @@ class Database():
         return status
 
     def get_favcount_stats(self, fav_count):
-        self.c.execute('''select count(*) from posts where fav_count=?''',
+        self.c.execute('''select count(*) from posts where fav_count=%s''',
                        (fav_count,))
         return self.c.fetchall()[0][0]
 
     def get_favcount(self, post_id):
-        self.c.execute('''select fav_count from posts where id=?''',
+        self.c.execute('''select fav_count from posts where id=%s''',
                         (post_id,))
         return self.c.fetchall()[0][0]
 
@@ -515,10 +500,10 @@ class Database():
         self.c.execute(
             '''
             select count(favorited_user) from post_favorites
-            where post_id = ? and favorited_user in
+            where post_id = %s and favorited_user in
             (
             select favorited_user from post_favorites
-            where post_id = ?
+            where post_id = %s
             )
             ''',
             (a, b,))
@@ -538,19 +523,14 @@ class Database():
 
 
 
-def main(update_posts=True):
+def main():
     db = Database()
 
-    if isfile(db.db_path):
-        if update_posts:
-            db.get_newer_and_recent()
+    db.init_db()
+    db.get_all_posts()
 
-    else:
-        db.init_db()
-        db.get_all_posts()
-
-    db.sample_favs()
+    #db.sample_favs()
 
 
 if __name__ == '__main__':
-    main(update_posts=False)
+    main()

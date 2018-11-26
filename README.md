@@ -9,5 +9,5 @@ It provides a Django-based web interface by which users may explore related post
 
 ### Dependencies
 
-- psycopg2
-- django
+- psycopg2-binary
+- Django
