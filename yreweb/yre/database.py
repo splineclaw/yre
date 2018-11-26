@@ -224,37 +224,17 @@ class Database():
 
     def save_favs(self, post_id, favorited_users):
         for u in favorited_users:
-            for retry in range(20):
-                try:
-                    self.c.execute(
-                                  '''INSERT OR IGNORE INTO
-                                     post_favorites(post_id, favorited_user)
-                                     VALUES (%s,%s)''',
-                                  (post_id, u))
-                    break
-                except sqlite3.OperationalError:
-                    if retry == 19:
-                        raise sqlite3.OperationalError
-                    print('Encountered lock saving favs. Retries:', retry)
-                    # database probably locked, back off a bit
-                    sleep = random.random() + 0.1
-                    sleep *= 1.2**retry
-                    time.sleep(sleep)
+            self.c.execute(
+                          '''INSERT OR IGNORE INTO
+                             post_favorites(post_id, favorited_user)
+                             VALUES (%s,%s)''',
+                          (post_id, u))
 
-        for retry in range(10):
-            try:
-                self.c.execute(
-                              '''INSERT OR IGNORE INTO
-                                 favorites_meta(post_id, updated)
-                                 VALUES (%s,%s)''',
-                              (post_id, time.time()))
-                break
-            except sqlite3.OperationalError:
-                if retry == 9:
-                    raise sqlite3.OperationalError
-                print('Encountered lock saving favs metadata. Retries:', retry)
-                # database probably locked, back off a bit
-                time.sleep(random.random()*(retry+1)**1.2/10)
+            self.c.execute(
+                          '''INSERT OR IGNORE INTO
+                             favorites_meta(post_id, updated)
+                             VALUES (%s,%s)''',
+                          (post_id, time.time()))
 
     def get_favs(self, id):
         r = self.s.get('https://e621.net/favorite/list_users.json',
@@ -272,22 +252,13 @@ class Database():
 
     def sample_favs(self, fav_limit = constants.MIN_FAVS):
         print('Reading known posts...')
-        for retry in range(10):
-            try:
-                remaining = [r[0] for r in self.c.execute(
-                    '''select distinct id from posts
-                       where fav_count >= %s and
-                       id not in
-                       (select distinct post_id from favorites_meta)
-                       order by fav_count desc''',
-                       (fav_limit,))]
-                break
-            except sqlite3.OperationalError:
-                print('Encountered lock reading unstored favs. Retries:', retry)
-                if retry == 9:
-                    raise sqlite3.OperationalError
-                # database probably locked, back off a bit
-                time.sleep(random.random()*(retry+1)**1.2/10)
+        remaining = [r[0] for r in self.c.execute(
+            '''select distinct id from posts
+               where fav_count >= %s and
+               id not in
+               (select distinct post_id from favorites_meta)
+               order by fav_count desc''',
+               (fav_limit,))]
 
 
         q = len(remaining)
@@ -309,16 +280,9 @@ class Database():
                 eta = (q-qty) * rate
                 print('Total {} in {:.2f}s: {:.3f}s/post. {} remain.'.format(
                         qty, dt, rate, seconds_to_dhms(eta)))
-            for retry in range(10):
-                try:
-                    self.conn.commit()
-                    break
-                except sqlite3.OperationalError:
-                    print('Encountered lock committing favs. Retries:', retry)
-                    if retry == 9:
-                        raise sqlite3.OperationalError
-                    # database probably locked, back off a bit
-                    time.sleep(random.random()*(retry+1)**1.2/10)
+
+            self.conn.commit()
+
 
             while time.time() - start < constants.REQUEST_DELAY:
                 time.sleep(0.001)
@@ -329,19 +293,10 @@ class Database():
         '''
         Return ids for which favorites are known but similars are not.
         '''
-        for retry in range(10):
-            try:
-                remaining = [r[0] for r in self.c.execute(
-                    '''select distinct post_id from favorites_meta
-                       where post_id not in
-                       (select distinct source_id from similars)''')]
-                break
-            except sqlite3.OperationalError:
-                print('Encountered lock reading unstored favs. Retries:', retry)
-                if retry == 9:
-                    raise sqlite3.OperationalError
-                # database probably locked, back off a bit
-                time.sleep(random.random()*(retry+1)**1.2/10)
+        remaining = [r[0] for r in self.c.execute(
+            '''select distinct post_id from favorites_meta
+               where post_id not in
+               (select distinct source_id from similars)''')]
         return remaining
 
     def get_branch_favs(self, post_id, mode='partial'):
@@ -365,78 +320,44 @@ class Database():
         return self.c.fetchall()
 
     def write_similar_row(self, source_id, update_time, similar_list):
-        for retry in range(10):
-            try:
-                self.c.execute('''
-                               insert into similars
-                               values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                            ON CONFLICT DO UPDATE
-                               ''',
-                               (source_id, update_time, *similar_list))
-                self.conn.commit()
-                break
-            except sqlite3.OperationalError:
-                print('Encountered lock writing similar row. Retries:', retry)
-                if retry == 9:
-                    raise sqlite3.OperationalError
-                # database probably locked, back off a bit
-                time.sleep(random.random()*(retry+1)**1.2/10)
+            self.c.execute('''
+                           insert into similars
+                           values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                        ON CONFLICT DO UPDATE
+                           ''',
+                           (source_id, update_time, *similar_list))
+            self.conn.commit()
 
     def have_favs_for_id(self, source_id):
         '''
         returns boolean reflecting whether the source has had its favorites recorded.
         '''
-        for retry in range(10):
-            try:
-                self.c.execute('''
-                               select * from favorites_meta where post_id = %s
-                               ''',
-                               (source_id,))
-                return self.c.fetchall()
-            except sqlite3.OperationalError:
-                print('Encountered lock checking if fav recorded. Retries:', retry)
-                if retry == 9:
-                    raise sqlite3.OperationalError
-                # database probably locked, back off a bit
-                time.sleep(random.random()*(retry+1)**1.2/10)
+        self.c.execute('''
+                       select * from favorites_meta where post_id = %s
+                       ''',
+                       (source_id,))
+        return self.c.fetchall()
 
     def get_urls_for_ids(self, id_list):
         urls = []
         for id in id_list:
-            for retry in range(10):
-                try:
-                    self.c.execute('''
-                                   select file_url from posts where id = %s
-                                   ''',
-                                   (id,))
-                    fetched = self.c.fetchall()
-                    if fetched:
-                        urls.append(fetched[0][0])
-                    else:
-                        urls.append('')
-                        print('No URL for {}!'.format(id))
-                    break
-                except sqlite3.OperationalError:
-                    print('Encountered lock writing similar row. Retries:', retry)
-                    if retry == 9:
-                        raise sqlite3.OperationalError
-                    # database probably locked, back off a bit
-                    time.sleep(random.random()*(retry+1)**1.2/10)
+            self.c.execute('''
+                           select file_url from posts where id = %s
+                           ''',
+                           (id,))
+            fetched = self.c.fetchall()
+            if fetched:
+                urls.append(fetched[0][0])
+            else:
+                urls.append('')
+                print('No URL for {}!'.format(id))
 
         return urls
 
     def select_similar(self, source_id):
-        for retry in range(10):
-            try:
-                self.c.execute('''select * from similars where source_id = %s''',
-                             (source_id,))
-                return self.c.fetchall()
-            except sqlite3.OperationalError:
-                print('Encountered lock writing similar row. Retries:', retry)
-                if retry == 9:
-                    raise sqlite3.OperationalError
-                # database probably locked, back off a bit
-                time.sleep(random.random()*(retry+1)**1.2/10)
+        self.c.execute('''select * from similars where source_id = %s''',
+                     (source_id,))
+        return self.c.fetchall()
 
     def update_favorites_subset(self, limit=constants.SUBSET_FAVS_PER_POST, fav_min=constants.MIN_FAVS, fav_max=9999):
         '''
