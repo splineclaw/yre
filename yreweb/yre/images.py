@@ -3,6 +3,7 @@ from requests.packages.urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 
 from os.path import isfile, dirname, abspath
+from os import makedirs
 import inspect
 from pathlib import Path
 from shutil import copyfile
@@ -27,6 +28,7 @@ def get_local(post_id, return_type='filename'):
     '''
     self_path = dirname(abspath(inspect.getfile(inspect.currentframe())))
     previews_path = str(Path(self_path).parent) + '/static/yreweb/previews/'
+    makedirs(previews_path, exist_ok=True)
 
     filename = str(post_id) + '.jpg'
     local_image = previews_path + filename
@@ -45,11 +47,11 @@ def get_local(post_id, return_type='filename'):
     probable_sample_url = prefix + 'sample/' + file_url[len(prefix):-3] + 'jpg'
 
     try:
-        urllib.request.urlopen(probable_sample_url)
+        urllib.request.urlopen(file_url)
         # success! time to download
         for attempt in range(10):
             try:
-                urllib.request.urlretrieve(probable_sample_url, local_image)
+                urllib.request.urlretrieve(file_url, local_image)
                 print('Downloaded', post_id)
                 break
             except urllib.error.URLError:
@@ -60,7 +62,6 @@ def get_local(post_id, return_type='filename'):
     except urllib.error.HTTPError:
         print('Could not download preview for', post_id)
         copyfile(previews_path+'error.jpg',local_image)
-        
     if return_type == 'filename':
         return filename
     elif return_type == 'cachehit':

@@ -45,7 +45,7 @@ class Database():
         self.s.mount('http://', HTTPAdapter(max_retries=retries))
         self.s.mount('https://', HTTPAdapter(max_retries=retries))
 
-        self.commit_on_del = False
+        self.commit_on_del = True
 
     def __del__(self):
         if self.commit_on_del:
@@ -88,9 +88,11 @@ class Database():
                        top_10 integer)''')
 
         self.c.execute('''CREATE TABLE IF NOT EXISTS sym_similarity
-                       (low_id integer primary key, high_id integer,
+                       (low_id integer, high_id integer,
                        common integer,
-                       add_sim real, mult_sim real)''')
+                       add_sim real, mult_sim real,
+                       unique(low_id, high_id))
+                       ''')
 
         self.conn.commit()
         print("Database ready.")
@@ -256,7 +258,7 @@ class Database():
         print('Reading known posts...')
         self.c.execute(
             '''select
-                id from posts
+                id, fav_count from posts
                where
                 fav_count >= %s and
                 id not in
@@ -265,7 +267,9 @@ class Database():
                order by
                 fav_count desc''',
                (fav_limit,))
-        remaining = [r[0] for r in self.c.fetchall()]
+        remaining = self.c.fetchall()
+
+
 
 
         q = len(remaining)
@@ -275,12 +279,13 @@ class Database():
         allstart = time.time()
         qty = 0
 
-        for r in remaining:
+        for r, favs in remaining:
             start = time.time()
             self.get_favs(r)
             qty += 1
             print('Got favs for', r, 'in',
-                  round(time.time()-start, 2), 'seconds')
+                  round(time.time()-start, 2), 'seconds.',
+                  favs, 'favs.')
             if qty % 20 == 0:
                 dt = time.time() - allstart
                 rate = dt/qty
@@ -306,7 +311,7 @@ class Database():
                (select distinct source_id from similars)''')]
         return remaining
 
-    def get_branch_favs(self, post_id, mode='partial'):
+    def get_branch_favs(self, post_id, mode='full'):
         '''
             returns list of tuples. each tuple contains:
             (post_id, branch_favs, post_favs)
@@ -318,9 +323,9 @@ class Database():
         self.c.execute('''
         select post_id, branch_favs, posts.fav_count from
         (select post_id, count(post_id) as branch_favs from {} where favorited_user in
-            (select favorited_user from post_favorites where post_id = %s order by random() limit 256)
+            (select favorited_user from post_favorites as subtable where post_id = %s order by random() limit 256)
             group by post_id order by count(post_id) desc)
-        inner join posts on post_id = posts.id
+        as toptable inner join posts on post_id = posts.id
         '''.format(source_db),
         (post_id,))
 
@@ -330,7 +335,7 @@ class Database():
             self.c.execute('''
                            insert into similars
                            values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                        ON CONFLICT DO UPDATE
+                           ON CONFLICT DO NOTHING
                            ''',
                            (source_id, update_time, *similar_list))
             self.conn.commit()
@@ -349,7 +354,7 @@ class Database():
         urls = []
         for id in id_list:
             self.c.execute('''
-                           select file_url from posts where id = %s
+                           select sample_url from posts where id = %s
                            ''',
                            (id,))
             fetched = self.c.fetchall()
@@ -364,6 +369,12 @@ class Database():
     def select_similar(self, source_id):
         self.c.execute('''select * from similars where source_id = %s''',
                      (source_id,))
+        return self.c.fetchall()
+
+    def select_sym_similar(self, source_id, limit=10):
+        self.c.execute('''select * from sym_similarity where low_id = %s or high_id = %s
+                       order by mult_sim desc limit %s''',
+                     (source_id, source_id, limit))
         return self.c.fetchall()
 
     def update_favorites_subset(self, limit=constants.SUBSET_FAVS_PER_POST, fav_min=constants.MIN_FAVS, fav_max=9999):
@@ -437,7 +448,7 @@ class Database():
             (a, b,))
         return self.c.fetchall()[0][0]
 
-    def calc_and_put_sym_sim(self, low_id, high_id):
+    def calc_and_put_sym_sim(self, low_id, high_id, verbose=False):
         '''
         Computes and inserts into the database the symmetric similarity between
         two posts, low_id and high_id.
@@ -445,6 +456,51 @@ class Database():
         '''
         if low_id > high_id:
             low_id, high_id = high_id, low_id
+
+        a = high_id
+        b = low_id
+
+        if not self.have_favs_for_id(a):
+            self.get_favs(a)
+        if not self.have_favs_for_id(b):
+            self.get_favs(b)
+        overlap = self.get_overlap(a, b)
+        a_favs = self.get_favcount(a)
+        b_favs = self.get_favcount(b)
+
+        add_sim = overlap / (a_favs + b_favs - overlap)
+
+        mult_sim = overlap**2 / (a_favs * b_favs)
+
+        if verbose:
+
+            print('a_favs {} overlap {} b_favs {}'.format(
+                a_favs, overlap, b_favs))
+
+            print('mutual {}    add_sim {:4f}   mult_sim {:4f}'.format(
+                overlap, add_sim, mult_sim
+            ))
+
+        if add_sim > 1:
+            print("ADD_SIM FOR {}, {} IS > 1  ({})".format(a, b, add_sim))
+            add_sim = 1
+
+        if mult_sim > 1:
+            print("MULT_SIM FOR {}, {} IS > 1  ({})".format(a, b, mult_sim))
+            mult_sim = 1
+
+        self.write_sym_sim_row(low_id, high_id, overlap, add_sim, mult_sim)
+
+    def write_sym_sim_row(self, low_id, high_id, overlap, add_sim, mult_sim):
+        self.c.execute('''
+                       insert into sym_similarity values
+                       (%s, %s, %s, %s, %s)
+                       ON CONFLICT (low_id, high_id) DO UPDATE SET
+                       common = EXCLUDED.common,
+                       add_sim = EXCLUDED.add_sim,
+                       mult_sim = EXCLUDED.mult_sim
+                       ''',
+                       (low_id, high_id, overlap, add_sim, mult_sim))
 
 
 
@@ -454,10 +510,11 @@ class Database():
 def main():
     db = Database()
 
-    #db.init_db()
+    db.init_db()
     #db.get_all_posts()
 
-    db.sample_favs()
+    #db.sample_favs()
+    db.calc_and_put_sym_sim(1402994,1267110, True)
 
 
 if __name__ == '__main__':
