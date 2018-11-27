@@ -225,15 +225,17 @@ class Database():
     def save_favs(self, post_id, favorited_users):
         for u in favorited_users:
             self.c.execute(
-                          '''INSERT OR IGNORE INTO
+                          '''INSERT INTO
                              post_favorites(post_id, favorited_user)
-                             VALUES (%s,%s)''',
+                             VALUES (%s,%s)
+                             ON CONFLICT DO NOTHING''',
                           (post_id, u))
 
             self.c.execute(
-                          '''INSERT OR IGNORE INTO
+                          '''INSERT INTO
                              favorites_meta(post_id, updated)
-                             VALUES (%s,%s)''',
+                             VALUES (%s,%s)
+                             ON CONFLICT DO NOTHING''',
                           (post_id, time.time()))
 
     def get_favs(self, id):
@@ -252,13 +254,18 @@ class Database():
 
     def sample_favs(self, fav_limit = constants.MIN_FAVS):
         print('Reading known posts...')
-        remaining = [r[0] for r in self.c.execute(
-            '''select distinct id from posts
-               where fav_count >= %s and
-               id not in
-               (select distinct post_id from favorites_meta)
-               order by fav_count desc''',
-               (fav_limit,))]
+        self.c.execute(
+            '''select
+                id from posts
+               where
+                fav_count >= %s and
+                id not in
+                 (select post_id from favorites_meta
+                  where post_id is not null)
+               order by
+                fav_count desc''',
+               (fav_limit,))
+        remaining = [r[0] for r in self.c.fetchall()]
 
 
         q = len(remaining)
@@ -447,10 +454,10 @@ class Database():
 def main():
     db = Database()
 
-    db.init_db()
-    db.get_all_posts()
+    #db.init_db()
+    #db.get_all_posts()
 
-    #db.sample_favs()
+    db.sample_favs()
 
 
 if __name__ == '__main__':
