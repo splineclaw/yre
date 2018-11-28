@@ -4,7 +4,7 @@ try:
     from . import constants
     from . import images
 
-except:
+except ModuleNotFoundError:
     from database import Database
     from utilities import *
     import constants
@@ -15,6 +15,7 @@ import random
 import math
 import sys
 import itertools
+from operator import itemgetter
 
 
 
@@ -50,6 +51,7 @@ def get_ten_similar(source_id,
         top_ten = result[-10:]
 
         age = time.time() - last_time
+        print(age)
 
         if age > stale_time:
             # this hasn't been updated in a while.
@@ -62,14 +64,13 @@ def get_ten_similar(source_id,
 
     return top_ten
 
-
 def compute_similar(source_id, from_full=False, print_enabled=False):
     '''
     computes top 10 similar to the source, saves it to the database,
     and returns their ids as a list
     '''
 
-    min_branch_favs = 2
+    min_branch_favs = constants.BRANCH_FAVS_MIN
     min_post_favs = constants.MIN_FAVS
 
     print('Finding similar to', source_id)
@@ -91,45 +92,58 @@ def compute_similar(source_id, from_full=False, print_enabled=False):
 
     source_favs = max([r[1] for r in results])
 
-    print('Computing...')
+    print('Computing... {} candidates.'.format(len(results)))
 
-    posts = []
+    bs = []
+    selected = 0
+    newresults = []
     for r in results:
-        # (post_id, branch_favs, post_favs)
         if r[0] == source_id or r[1] < min_branch_favs or r[2] < min_post_favs:
             # exclude the source and posts with insufficient favs
             continue
-        # branch_favs / post_favs
-        # the fraction of target favoriters who are also source favoriters
-        denom = r[2] if from_full else min(r[2], constants.MIN_FAVS)
-        relevance = r[1]/denom
-        # branch_favs / source_favs
-        # the fraction of source favoriters who are also target favoriters
-        popularity = r[1] / source_favs
+        newresults.append(r)
+    print(len(newresults),'/',len(results),'selected ({}%)'.format(
+        len(newresults)/len(results)*100
+    ))
+    results = sorted(newresults, key=itemgetter(1))
+    rq = len(results)
+    slicept = min(int(rq*constants.BRANCH_FAVS_COEFF), constants.BRANCH_FAVS_MAX)
+    results = results[:slicept]
+    print(len(results), 'results. Computing similarities.')
 
-        product = relevance * popularity
+    bs = []
+    for r in results:
+        selected += 1
+        bs.append(r[0])
 
-        # id, branch_favs, post_favs, popularity, relevance, product ...
-        posts.append((*r, popularity, relevance, product))
+    a = source_id
+    for b in bs:
+        db.calc_and_put_sym_sim(a,b)
 
-    print('Sorting...')
+    print('Sorting... {} selected.'.format(selected))
 
-    product_sorted = [x for x in sorted(posts,
-                                        key=lambda x: (x[-1]),
-                                        reverse=True)][:10]
+    top_ten = db.select_sym_similar(source_id)
+
     if print_enabled:
         linewidth = 99
         print('\n'+'-'*linewidth)
         print('SORTED BY SIMILARITY')
-        for r in product_sorted:
+        for r in top_ten:
             print(
-                   ('id:{:7d}  common favs:{:4d}  total favs:{:4d}  ' +
-                    'popularity:{:.4f}  relevance:{:.4f}  ' +
-                    'product:{:.4f}'
+                   ('id low:{:7d}  id high:{:7d}  common favs:{:4d}  ' +
+                    'add:{:.4f}  mult:{:.4f}  '
                     ).format(*r)
                   )
+    top_ten_ids = []
+    low_high = list(zip([p[0] for p in top_ten],[p[1] for p in top_ten]))
+    #print(top_ten, low_high)
+    for x,y in low_high:
+        if x != source_id:
+            top_ten_ids.append(x)
+        else:
+            top_ten_ids.append(y)
 
-    top_ten_ids = [x[0] for x in product_sorted]
+    print(top_ten_ids)
 
     if top_ten_ids:
         # if there are fewer than 10 similar posts, fill with zeros
@@ -276,6 +290,8 @@ def sym_sims(a, b, verbose=False):
         who favorited both post a and b to the total quantity of users who favorited post a
         and the ratio of the quantity of users who favorited both post a and b to the
         total quantity of users who favorited post b.
+        [/////     ] X [////////  ] = [///       ]
+        a common ratio X b common ratio = multiplicative similarity
 
     '''
     print('Similarity between {} and {}'.format(a,b))

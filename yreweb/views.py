@@ -64,10 +64,10 @@ def similar_pics(request, source_id,
 
 
 def recompute_similar(request, source_id):
-    return similar_pics(request, source_id, stale_time=0)
+    return similar_pics(request, source_id, stale_time=-1e10)
 
 def recompute_full(request, source_id):
-    return similar_pics(request, source_id, stale_time=0, full=True)
+    return similar_pics(request, source_id, stale_time=-1e10, full=True)
 
 def subset(request):
     db = Database()
