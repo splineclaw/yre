@@ -221,8 +221,10 @@ class Database():
         self.get_all_posts(after_id=after_id - recent_count)
 
     def get_post_ids(self):
-        return [id[0] for id in self.c.execute(
-            '''select id from posts''')]
+        self.c.execute(
+            '''select posts.id from posts''')
+        results = self.c.fetchall()
+        return [id[0] for id in results]
 
     def save_favs(self, post_id, favorited_users):
         for u in favorited_users:
@@ -311,7 +313,7 @@ class Database():
                (select distinct source_id from similars)''')]
         return remaining
 
-    def get_branch_favs(self, post_id, mode='full'):
+    def get_branch_favs(self, post_id, mode='partial'):
         '''
             returns list of tuples. each tuple contains:
             (post_id, branch_favs, post_favs)
@@ -379,8 +381,9 @@ class Database():
 
     def update_favorites_subset(self, limit=constants.SUBSET_FAVS_PER_POST, fav_min=constants.MIN_FAVS, fav_max=9999):
         '''
-        Loads only posts over favorite threshhold
-        into table favorites_subset. Dramatically reduces compute time.
+        Loads only posts over favorite threshhold into table favorites_subset.
+        Additionally limits number of favorites per post.
+        Dramatically reduces compute time.
         '''
         print('Updating favorites subset. This will take several minutes.')
         start = time.time()
@@ -418,8 +421,8 @@ class Database():
             fav_min, limit, seconds_to_dhms(time.time()-start),
             (time.time()-start)*1000/q)
         print(status)
-        print('Vacuuming...')
-        self.c.execute('''vacuum''')
+        #print('Vacuuming...')
+        #self.c.execute('''vacuum''')
         return status
 
     def get_favcount_stats(self, fav_count):
@@ -513,8 +516,9 @@ def main():
     db.init_db()
     #db.get_all_posts()
 
-    #db.sample_favs()
-    db.calc_and_put_sym_sim(1402994,1267110, True)
+    db.sample_favs()
+
+    db.update_favorites_subset()
 
 
 if __name__ == '__main__':

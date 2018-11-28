@@ -15,6 +15,7 @@ import random
 import math
 import sys
 import itertools
+from operator import itemgetter
 
 
 
@@ -50,6 +51,7 @@ def get_ten_similar(source_id,
         top_ten = result[-10:]
 
         age = time.time() - last_time
+        print(age)
 
         if age > stale_time:
             # this hasn't been updated in a while.
@@ -68,7 +70,7 @@ def compute_similar(source_id, from_full=False, print_enabled=False):
     and returns their ids as a list
     '''
 
-    min_branch_favs = 2
+    min_branch_favs = constants.BRANCH_FAVS_MIN
     min_post_favs = constants.MIN_FAVS
 
     print('Finding similar to', source_id)
@@ -90,19 +92,35 @@ def compute_similar(source_id, from_full=False, print_enabled=False):
 
     source_favs = max([r[1] for r in results])
 
-    print('Computing...')
+    print('Computing... {} candidates.'.format(len(results)))
 
-    posts = []
+    bs = []
+    selected = 0
+    newresults = []
     for r in results:
-        # (post_id, branch_favs, post_favs)
         if r[0] == source_id or r[1] < min_branch_favs or r[2] < min_post_favs:
             # exclude the source and posts with insufficient favs
             continue
+        newresults.append(r)
+    print(len(newresults),'/',len(results),'selected ({}%)'.format(
+        len(newresults)/len(results)*100
+    ))
+    results = sorted(newresults, key=itemgetter(1))
+    rq = len(results)
+    slicept = min(int(rq*constants.BRANCH_FAVS_COEFF), constants.BRANCH_FAVS_MAX)
+    results = results[:slicept]
+    print(len(results), 'results. Computing similarities.')
 
-        a = source_id
-        b = r[0]
+    bs = []
+    for r in results:
+        selected += 1
+        bs.append(r[0])
+
+    a = source_id
+    for b in bs:
         db.calc_and_put_sym_sim(a,b)
-    print('Sorting...')
+
+    print('Sorting... {} selected.'.format(selected))
 
     top_ten = db.select_sym_similar(source_id)
 
