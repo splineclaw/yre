@@ -1,7 +1,7 @@
-VERSION = '0.0.06'
+VERSION = '0.0.07'
 
 USER_AGENT = 'yre {} (splineclaw)'.format(VERSION)
-EXAMPLE_POST_ID = 546281
+EXAMPLE_POST_ID = 912182
 
 # rate limiting
 PAGE_DELAY = 2  # 30 per minute
@@ -13,5 +13,6 @@ SUBSET_FAVS_PER_POST = 256
 BRANCH_FAVS_MIN = 5
 BRANCH_FAVS_COEFF = 0.2 # only top n posts by branch favs will be analysed
 BRANCH_FAVS_MAX = 5000 # ... or this number, whichever is lesser
+SYM_SIM_MODE = 'add_sim' # 'add_sim' or 'mult_sim'. see analysis.sym_sims for details.
 
 DEFAULT_STALE_TIME = 10**7 # seconds

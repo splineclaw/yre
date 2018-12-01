@@ -374,8 +374,9 @@ class Database():
         return self.c.fetchall()
 
     def select_sym_similar(self, source_id, limit=10):
+        mode = constants.SYM_SIM_MODE
         self.c.execute('''select * from sym_similarity where low_id = %s or high_id = %s
-                       order by mult_sim desc limit %s''',
+                       order by {} desc limit %s'''.format(mode),
                      (source_id, source_id, limit))
         return self.c.fetchall()
 

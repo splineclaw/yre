@@ -422,6 +422,10 @@ if __name__ == '__main__':
         else:
             post_id = int(args[0])
     else:
-        post_id = int(input('Enter post id: '))
+        i = input('Enter post id: ')
+        post_id = int(i) if i else None
     if post_id:
         presample_tree(post_id)
+    else:
+        print('No input provided. Sampling from default post.')
+        presample_tree(constants.EXAMPLE_POST_ID)
