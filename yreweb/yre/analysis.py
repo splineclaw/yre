@@ -194,7 +194,8 @@ def presample_randomly():
         ))
 
 
-def presample_tree(root_id, download='True'):
+def presample_tree(root_id, download_target=True,
+                   download_similar=constants.PRE_DOWNLOAD):
     db = Database()
 
     traversed_ids = [root_id]
@@ -233,7 +234,7 @@ def presample_tree(root_id, download='True'):
             ]
 
         next_depth, next_priority, next_id = next_post
-        if download:
+        if download_target:
             images.image_with_delay(next_id)
         traversed_ids.append(next_id)
         print('Selected post {}. Depth {}, priority {}.'.format(
@@ -243,6 +244,9 @@ def presample_tree(root_id, download='True'):
         start = time.time()
         branch_ids = get_n_similar(next_id)
         delta = time.time() - start
+        if download_similar:
+            for b in branch_ids:
+                images.image_with_delay(b)
 
         branch_depth = next_depth + 1
 

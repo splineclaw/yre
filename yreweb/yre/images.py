@@ -28,6 +28,7 @@ def get_local(post_id, return_type='filename'):
     '''
     self_path = dirname(abspath(inspect.getfile(inspect.currentframe())))
     previews_path = str(Path(self_path).parent) + '/static/yreweb/previews/'
+    error_path = str(Path(self_path).parent) + '/static/yreweb/error.jpg'
     makedirs(previews_path, exist_ok=True)
 
     filename = str(post_id) + '.jpg'
@@ -61,7 +62,7 @@ def get_local(post_id, return_type='filename'):
                 time.sleep(0.2*1.5**attempt)
     except urllib.error.HTTPError:
         print('Could not download preview for', post_id)
-        copyfile(previews_path+'error.jpg',local_image)
+        copyfile(error_path,local_image)
     if return_type == 'filename':
         return filename
     elif return_type == 'cachehit':
