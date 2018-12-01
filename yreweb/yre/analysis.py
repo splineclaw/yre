@@ -19,54 +19,51 @@ from operator import itemgetter
 
 
 
-def get_ten_similar(source_id,
+def get_n_similar(source_id,
                     stale_time=constants.DEFAULT_STALE_TIME,
                     from_full=False):
     '''
-    Returns a list of the 10 most similar posts to the source.
+    Returns a list of the most similar posts to the source.
     Uses database to cache results.
-
-    Default stale time is 10**6 seconds, or 11.6 days.
     '''
 
     compute_print = True  # show table of statistics?
 
-    print('Getting top ten similar for', source_id)
+    print('Getting top similar for', source_id)
 
     # check if in db
     db = Database()
-    results = db.select_similar(source_id)
+    results = db.select_similars(source_id)
 
     if len(results) == 0:
         # not yet in db. let's add it!
         print('Not in database. Fetching...')
-        top_ten = compute_similar(source_id,
+        top_n = compute_similar(source_id,
                                   from_full=from_full,
                                   print_enabled=compute_print)
 
     else:
         print('Found in database.')
-        result = results[0]
-        last_time = result[1]
-        top_ten = result[-10:]
+        result = [x[2] for x in results]
+        last_time = min(x[1] for x in results)
+        top_n = result[-constants.SIM_PER_POST:]
 
         age = time.time() - last_time
-        print(age)
 
         if age > stale_time:
             # this hasn't been updated in a while.
             print('Cache stale ({} old, threshhold {}). Fetching...'.format(
                 seconds_to_dhms(age), seconds_to_dhms(stale_time)
             ))
-            top_ten = compute_similar(source_id,
+            top_n = compute_similar(source_id,
                                       from_full=from_full,
                                       print_enabled=compute_print)
 
-    return top_ten
+    return top_n
 
 def compute_similar(source_id, from_full=False, print_enabled=False):
     '''
-    computes top 10 similar to the source, saves it to the database,
+    computes top similar to the source, saves it to the database,
     and returns their ids as a list
     '''
 
@@ -85,7 +82,10 @@ def compute_similar(source_id, from_full=False, print_enabled=False):
         db.get_favs(source_id)
 
     print('Finding common favorites...')
+    # slow
+    branch_time = time.time()
     results = db.get_branch_favs(source_id)
+    branch_time = time.time() - branch_time
 
     if not results:
         return None
@@ -105,11 +105,13 @@ def compute_similar(source_id, from_full=False, print_enabled=False):
     print(len(newresults),'/',len(results),'selected ({}%)'.format(
         len(newresults)/len(results)*100
     ))
-    results = sorted(newresults, key=itemgetter(1))
+    results = sorted(newresults, key=itemgetter(1), reverse=True)
     rq = len(results)
     slicept = min(int(rq*constants.BRANCH_FAVS_COEFF), constants.BRANCH_FAVS_MAX)
     results = results[:slicept]
+
     print(len(results), 'results. Computing similarities.')
+    # slow
 
     bs = []
     for r in results:
@@ -117,41 +119,51 @@ def compute_similar(source_id, from_full=False, print_enabled=False):
         bs.append(r[0])
 
     a = source_id
+    sym_time = time.time()
     for b in bs:
         db.calc_and_put_sym_sim(a,b)
+    sym_time = time.time() - sym_time
 
     print('Sorting... {} selected.'.format(selected))
 
-    top_ten = db.select_sym_similar(source_id)
+    top_n = db.select_n_similar(source_id, constants.SIM_PER_POST)
 
     if print_enabled:
         linewidth = 99
         print('\n'+'-'*linewidth)
         print('SORTED BY SIMILARITY')
-        for r in top_ten:
+        for r in top_n:
             print(
                    ('id low:{:7d}  id high:{:7d}  common favs:{:4d}  ' +
                     'add:{:.4f}  mult:{:.4f}  '
                     ).format(*r)
                   )
-    top_ten_ids = []
-    low_high = list(zip([p[0] for p in top_ten],[p[1] for p in top_ten]))
-    #print(top_ten, low_high)
+    top_n_ids = []
+    print(branch_time,'s for branching,',sym_time,'s for',slicept,'posts')
+    low_high = list(zip([p[0] for p in top_n],[p[1] for p in top_n]))
+
     for x,y in low_high:
         if x != source_id:
-            top_ten_ids.append(x)
+            top_n_ids.append(x)
         else:
-            top_ten_ids.append(y)
+            top_n_ids.append(y)
 
-    print(top_ten_ids)
 
-    if top_ten_ids:
-        # if there are fewer than 10 similar posts, fill with zeros
-        top_ten_ids = (top_ten_ids + [0]*10)[:10]
+    for j, currentid in enumerate(top_n_ids):
+        #find index
+        for i,x in enumerate(results):
+            if x[0] == currentid:
+                print('result {} in location {}/{}'.format(
+                    j+1, i+1, slicept
+                ))
 
-        db.write_similar_row(source_id, time.time(), top_ten_ids)
+    if top_n_ids:
+        # if there are not enough similar posts, fill with zeros
+        top_n_ids = (top_n_ids + [0]*constants.SIM_PER_POST)[:constants.SIM_PER_POST]
 
-        return top_ten_ids
+        db.write_similar_row(source_id, time.time(), top_n_ids)
+
+        return top_n_ids
     else:
         return None
 
@@ -186,7 +198,7 @@ def presample_tree(root_id, download='True'):
     traversed_ids = [root_id]
 
     # each element is (depth, priority, id)
-    unsampled_posts = [[1, 1, id] for id in get_ten_similar(root_id)]
+    unsampled_posts = [[1, 1, id] for id in get_n_similar(root_id)]
 
     period = -1
     new_count = 0
@@ -227,7 +239,7 @@ def presample_tree(root_id, download='True'):
         ))
 
         start = time.time()
-        branch_ids = get_ten_similar(next_id)
+        branch_ids = get_n_similar(next_id)
         delta = time.time() - start
 
         branch_depth = next_depth + 1
@@ -349,7 +361,7 @@ def single_benchmark():
         times_by_repeat = []
         for r in range(repeats):
             start = time.time()
-            get_ten_similar(id, 0)
+            get_n_similar(id, 0)
             dt = time.time() - start
             times_by_repeat.append(dt)
         times_by_post.append(times_by_repeat)

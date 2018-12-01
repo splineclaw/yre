@@ -80,6 +80,11 @@ class Database():
             (id integer primary key, name text,
              count integer, type integer)''')
 
+        self.c.execute('''CREATE TABLE IF NOT EXISTS post_similars
+                       (source_id integer, updated bigint,
+                       sim_post integer, sim_rank integer,
+                       unique(source_id,sim_rank))''')
+
         self.c.execute('''CREATE TABLE IF NOT EXISTS similars
                        (source_id integer primary key, updated bigint,
                        top_1 integer, top_2 integer, top_3 integer,
@@ -339,7 +344,22 @@ class Database():
                            values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                            ON CONFLICT DO NOTHING
                            ''',
-                           (source_id, update_time, *similar_list))
+                           (source_id, update_time, *similar_list[:10]))
+
+            insert_list = []
+            for i, s in enumerate(similar_list):
+                r = i + 1
+                insert_list.append((source_id, update_time, s, r))
+
+            self.c.executemany('''
+                           insert into post_similars
+                           values(%s,%s,%s,%s)
+                           ON CONFLICT (source_id, sim_rank) DO UPDATE SET
+                           updated = EXCLUDED.updated,
+                           sim_post = EXCLUDED.sim_post
+                           ''',
+                           insert_list)
+
             self.conn.commit()
 
     def have_favs_for_id(self, source_id):
@@ -373,7 +393,14 @@ class Database():
                      (source_id,))
         return self.c.fetchall()
 
-    def select_sym_similar(self, source_id, limit=10):
+    def select_similars(self, source_id):
+        self.c.execute('''select * from post_similars where source_id = %s
+                          order by sim_rank asc''',
+                     (source_id,))
+        return self.c.fetchall()
+
+    def select_n_similar(self, source_id, limit=10):
+
         mode = constants.SYM_SIM_MODE
         self.c.execute('''select * from sym_similarity where low_id = %s or high_id = %s
                        order by {} desc limit %s'''.format(mode),
