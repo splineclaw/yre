@@ -26,7 +26,7 @@ def similar_pics(request, source_id,
                  stale_time=constants.DEFAULT_STALE_TIME,
                  full=False, source='local'):
     start = time.time()
-    similar_ids = get_n_similar(source_id, stale_time, from_full=full)[:constants.SIM_PER_POST]
+    similar_ids = get_n_similar(source_id, stale_time, from_full=full)[:constants.SIMS_SHOWN]
     print(similar_ids)
     db = Database()
 

@@ -35,9 +35,11 @@ def get_n_similar(source_id,
     db = Database()
     results = db.select_similars(source_id)
 
-    if len(results) == 0:
+    if len(results) < constants.SIM_PER_POST:
         # not yet in db. let's add it!
-        print('Not in database. Fetching...')
+        print('Not in database ({}/{} expected found). Fetching...'.format(
+            len(results), constants.SIM_PER_POST
+        ))
         top_n = compute_similar(source_id,
                                   from_full=from_full,
                                   print_enabled=compute_print)
