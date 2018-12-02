@@ -297,13 +297,11 @@ def presample_pyramid(root_id, download_target=True,
     current_coords = [1,1] #depth, rank
 
     while len(unsampled_posts) > 0:
-        print(current_coords)
         next_post = []
         for i, r in enumerate(unsampled_posts):
             #print(r[:2])
             if r[:2]==current_coords:
                 next_post = r
-                print(r,'selected')
                 break
 
 
@@ -323,9 +321,12 @@ def presample_pyramid(root_id, download_target=True,
                 images.image_with_delay(b)
 
         new = 0
+        allcoords = [x[:2] for x in unsampled_posts]
         for i, b_id in enumerate(branch_ids):
             if b_id in unsampled_posts:
                 # known id, do nothing
+                pass
+            if b_id in traversed_ids and [current_coords[0]+1, i+1] in allcoords:
                 pass
             else:
                 new += 1
