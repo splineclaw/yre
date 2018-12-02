@@ -279,6 +279,90 @@ def presample_tree(root_id, download_target=True,
             delta, 60/period, new_count, len(traversed_ids), len(unsampled_posts), new
         ))
 
+def presample_pyramid(root_id, download_target=True,
+                   download_similar=constants.PRE_DOWNLOAD):
+    db = Database()
+
+
+    traversed_ids = [root_id]
+
+    unsampled_results = get_n_similar(root_id)
+    unsampled_posts = []
+    for i, r in enumerate(unsampled_results):
+        # each element is (depth, rank, id)
+        unsampled_posts.append([1,i+1,r])
+
+    period = -1
+    new_count = 0
+    current_coords = [1,1] #depth, rank
+
+    while len(unsampled_posts) > 0:
+        print(current_coords)
+        next_post = []
+        for i, r in enumerate(unsampled_posts):
+            #print(r[:2])
+            if r[:2]==current_coords:
+                next_post = r
+                print(r,'selected')
+                break
+
+
+        next_depth, next_rank, next_id = next_post
+        if download_target:
+            images.image_with_delay(next_id)
+        traversed_ids.append(next_id)
+        print('Selected post {}. Depth {}, rank {}.'.format(
+            next_id, next_depth, next_rank
+        ))
+
+        start = time.time()
+        branch_ids = get_n_similar(next_id)
+        delta = time.time() - start
+        if download_similar:
+            for b in branch_ids:
+                images.image_with_delay(b)
+
+        new = 0
+        for i, b_id in enumerate(branch_ids):
+            if b_id in unsampled_posts:
+                # known id, do nothing
+                pass
+            else:
+                new += 1
+                # it's new!
+                unsampled_posts.append([current_coords[0]+1, i+1, b_id])
+
+        # now it's safe to remove the post
+        unsampled_posts.pop(unsampled_posts.index(next_post))
+        traversed_ids.append(next_id)
+
+        if period == -1:
+            if delta > 0.05:
+                period = delta
+        else:
+            # ema 20
+            # geometric average
+            if delta > 0.05:  # omit cache hits
+                period = 1 / (1/period * 0.95 + 1/delta * 0.05)
+                new_count += 1
+
+        print('Similar computation took {:5.2f}s. {:5.2f} per minute. {} fetched, {} traversed. {} ({} new) in queue.'.format(
+            delta, 60/period, new_count, len(traversed_ids), len(unsampled_posts), new
+        ))
+
+
+        sq = constants.SIM_PER_POST
+
+        if not current_coords in [x[:2] for x in unsampled_posts]:
+
+            current_coords[0] += 1
+            current_coords[1] -= 1
+
+            if current_coords[1] == 0:
+                backtrack = min(current_coords[0],sq)
+                current_coords[0] -= backtrack-1
+                current_coords[1] = backtrack
+
 def sym_sims(a, b, verbose=False):
     '''
     Takes as argument two post ids, a and b.
@@ -443,7 +527,7 @@ if __name__ == '__main__':
         i = input('Enter post id: ')
         post_id = int(i) if i else None
     if post_id:
-        presample_tree(post_id)
+        presample_pyramid(post_id)
     else:
         print('No input provided. Sampling from default post.')
-        presample_tree(constants.EXAMPLE_POST_ID)
+        presample_pyramid(constants.EXAMPLE_POST_ID)
