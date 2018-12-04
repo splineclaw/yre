@@ -295,6 +295,7 @@ def presample_pyramid(root_id, download_target=True,
     period = -1
     new_count = 0
     current_coords = [1,1] #depth, rank
+    known_branches = {}
 
     while len(unsampled_posts) > 0:
         next_post = []
@@ -306,25 +307,31 @@ def presample_pyramid(root_id, download_target=True,
 
 
         next_depth, next_rank, next_id = next_post
-        if download_target:
-            images.image_with_delay(next_id)
-        traversed_ids.append(next_id)
-        print('Selected post {}. Depth {}, rank {}.'.format(
-            next_id, next_depth, next_rank
-        ))
+
+
 
         start = time.time()
-        branch_ids = get_n_similar(next_id)
+        if not next_id in known_branches:
+            branch_ids = get_n_similar(next_id)
+            known_branches[next_id] = branch_ids
+            print('Selected post {}. Depth {}, rank {}.'.format(
+                next_id, next_depth, next_rank
+            ))
+            if download_target:
+                images.image_with_delay(next_id)
+            if download_similar:
+                for b in branch_ids:
+                    images.image_with_delay(b)
+        else:
+            branch_ids = known_branches[next_id]
         delta = time.time() - start
-        if download_similar:
-            for b in branch_ids:
-                images.image_with_delay(b)
+
 
         new = 0
         allcoords = [x[:2] for x in unsampled_posts]
         for i, b_id in enumerate(branch_ids):
             if b_id in unsampled_posts:
-                # known id, do nothing
+                # unique, do nothing
                 pass
             if b_id in traversed_ids and [current_coords[0]+1, i+1] in allcoords:
                 pass
@@ -338,12 +345,12 @@ def presample_pyramid(root_id, download_target=True,
         traversed_ids.append(next_id)
 
         if period == -1:
-            if delta > 0.05:
+            if delta > 1:
                 period = delta
         else:
             # ema 20
             # geometric average
-            if delta > 0.05:  # omit cache hits
+            if delta > 1:  # omit cache hits
                 period = 1 / (1/period * 0.95 + 1/delta * 0.05)
                 new_count += 1
 
