@@ -279,6 +279,25 @@ def presample_tree(root_id, download_target=True,
             delta, 60/period, new_count, len(traversed_ids), len(unsampled_posts), new
         ))
 
+def step_coords(current_coords):
+    sq = constants.SIM_PER_POST
+
+    if current_coords[1] == 1:
+        # if rank is first
+        current_coords[1] = current_coords[0]*2 + 1
+        current_coords[0] = 1
+
+    else:
+        d = sum(current_coords) #diagonal number
+        if d% 2 == 0: #even diagonal:
+            #decrease rank
+            current_coords[1] -= 1
+        else: # odd diagonal:
+            #increase depth
+            current_coords[0] += 1
+
+    print(current_coords)
+
 def presample_pyramid(root_id, download_target=True,
                    download_similar=constants.PRE_DOWNLOAD):
     db = Database()
@@ -306,13 +325,7 @@ def presample_pyramid(root_id, download_target=True,
                 break
 
         if not next_post:
-            current_coords[0] += 1
-            current_coords[1] -= 1
-
-            if current_coords[1] == 0:
-                backtrack = min(current_coords[0],sq)
-                current_coords[0] -= backtrack-1
-                current_coords[1] = backtrack
+            step_coords(current_coords)
             continue
 
 
@@ -371,17 +384,10 @@ def presample_pyramid(root_id, download_target=True,
         ))
 
 
-        sq = constants.SIM_PER_POST
+
 
         if not current_coords in [x[:2] for x in unsampled_posts]:
-
-            current_coords[0] += 1
-            current_coords[1] -= 1
-
-            if current_coords[1] == 0:
-                backtrack = min(current_coords[0],sq)
-                current_coords[0] -= backtrack-1
-                current_coords[1] = backtrack
+            step_coords(current_coords)
 
 def sym_sims(a, b, verbose=False):
     '''
