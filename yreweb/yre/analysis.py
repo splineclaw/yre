@@ -305,6 +305,16 @@ def presample_pyramid(root_id, download_target=True,
                 next_post = r
                 break
 
+        if not next_post:
+            current_coords[0] += 1
+            current_coords[1] -= 1
+
+            if current_coords[1] == 0:
+                backtrack = min(current_coords[0],sq)
+                current_coords[0] -= backtrack-1
+                current_coords[1] = backtrack
+            continue
+
 
         next_depth, next_rank, next_id = next_post
 
@@ -334,6 +344,8 @@ def presample_pyramid(root_id, download_target=True,
                 # unique, do nothing
                 pass
             if b_id in traversed_ids and [current_coords[0]+1, i+1] in allcoords:
+                pass
+            if b_id in known_branches:
                 pass
             else:
                 new += 1
