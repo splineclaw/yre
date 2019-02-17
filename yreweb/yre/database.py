@@ -210,8 +210,8 @@ class Database():
         self.get_all_posts(before_id)
 
     def get_newer_posts(self):
-        after_id = [id for id in self.c.execute(
-            '''SELECT MAX(id) FROM posts''')][0][0]
+        self.c.execute('''SELECT MAX(id) FROM posts''')
+        after_id = [id for id in self.c.fetchall()][0][0]
         print('Found newest post:', after_id)
         self.get_all_posts(after_id=after_id)
 
@@ -267,10 +267,7 @@ class Database():
             '''select
                 id, fav_count from posts
                where
-                fav_count >= %s and
-                id not in
-                 (select post_id from favorites_meta
-                  where post_id is not null)
+                fav_count >= %s
                order by
                 fav_count desc''',
                (fav_limit,))
@@ -542,7 +539,9 @@ def main():
     db = Database()
 
     db.init_db()
-    #db.get_all_posts()
+    
+    db.get_all_posts()
+    #db.get_newer_posts()
 
     db.sample_favs()
 

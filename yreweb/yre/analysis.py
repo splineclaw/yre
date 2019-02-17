@@ -126,7 +126,7 @@ def compute_similar(source_id, from_full=False, print_enabled=False):
         db.calc_and_put_sym_sim(a,b)
     sym_time = time.time() - sym_time
 
-    print('Sorting... {} selected.'.format(selected))
+    print('Fetching {} similar...'.format(constants.SIM_PER_POST))
 
     top_n = db.select_n_similar(source_id, constants.SIM_PER_POST)
 
