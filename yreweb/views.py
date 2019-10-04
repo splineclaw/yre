@@ -26,7 +26,7 @@ def similar_pics(request, source_id,
                  stale_time=constants.DEFAULT_STALE_TIME,
                  full=False, source='local'):
     start = time.time()
-    similar_ids = get_ten_similar(source_id, stale_time, from_full=full)[:8]
+    similar_ids = get_ten_similar(source_id, stale_time, from_full=full)[:constants.SHOW_N]
     db = Database()
 
     if source == 'remote':
@@ -52,7 +52,7 @@ def similar_pics(request, source_id,
     elif source == 'local':
         names = [images.image_with_delay(id) for id in similar_ids]
 
-        link_prefix = 'http://localhost:8000/'
+        link_prefix = '../'#'http://localhost:8000/'
         link_urls = [link_prefix+str(id) for id in similar_ids]
 
         zipped = list(zip(similar_ids, names, link_urls))

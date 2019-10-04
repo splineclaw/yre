@@ -36,6 +36,7 @@ def get_ten_similar(source_id,
     db = Database()
     results = db.select_similar(source_id)
 
+
     if len(results) == 0:
         # not yet in db. let's add it!
         print('Not in database. Fetching...')
@@ -47,7 +48,7 @@ def get_ten_similar(source_id,
         print('Found in database.')
         result = results[0]
         last_time = result[1]
-        top_ten = result[-10:]
+        top_ten = result[max(-constants.SHOW_N, -len(results)+3):]
 
         age = time.time() - last_time
 
@@ -59,6 +60,8 @@ def get_ten_similar(source_id,
             top_ten = compute_similar(source_id,
                                       from_full=from_full,
                                       print_enabled=compute_print)
+
+    print(source_id, top_ten)
 
     return top_ten
 
@@ -116,7 +119,7 @@ def compute_similar(source_id, from_full=False, print_enabled=False):
 
     product_sorted = [x for x in sorted(posts,
                                         key=lambda x: (x[-1]),
-                                        reverse=True)][:10]
+                                        reverse=True)][:constants.SAVE_N]
     if print_enabled:
         linewidth = 99
         print('\n'+'-'*linewidth)
@@ -133,9 +136,9 @@ def compute_similar(source_id, from_full=False, print_enabled=False):
 
     if top_ten_ids:
         # if there are fewer than 10 similar posts, fill with zeros
-        top_ten_ids = (top_ten_ids + [0]*10)[:10]
+        top_ten_ids = (top_ten_ids + [0]*constants.SAVE_N)[:constants.SAVE_N]
 
-        db.write_similar_row(source_id, time.time(), top_ten_ids)
+        db.write_similar(source_id, time.time(), top_ten_ids)
 
         return top_ten_ids
     else:
@@ -166,20 +169,22 @@ def presample_randomly():
         ))
 
 
-def presample_tree(root_id, download='True'):
+def presample_tree(root_ids, download='True'):
     db = Database()
 
-    traversed_ids = [root_id]
+    traversed_ids = root_ids[:]
 
     # each element is (depth, priority, id)
-    unsampled_posts = [[1, 1, id] for id in get_ten_similar(root_id)]
+    unsampled_posts = []
+    for r in root_ids:
+        unsampled_posts += [[1, 1, i] for i in get_ten_similar(r)]
 
     period = -1
     new_count = 0
 
     while len(unsampled_posts) > 0:
         # iterate, ordered by smallest depth first,
-        # and highest popularity in conflict.
+        # and highest popularity in tie.
         # (popularity is the number of known parents a post has.)
 
         unsampled_depths = [a[0] for a in unsampled_posts]
@@ -205,6 +210,9 @@ def presample_tree(root_id, download='True'):
             ]
 
         next_depth, next_priority, next_id = next_post
+        if next_id%1 > 1e-6:
+            print("Invalid value for ID!!")
+            print(next_post)
         if download:
             images.image_with_delay(next_id)
         traversed_ids.append(next_id)
@@ -213,7 +221,10 @@ def presample_tree(root_id, download='True'):
         ))
 
         start = time.time()
+
+        # sample as needed
         branch_ids = get_ten_similar(next_id)
+
         delta = time.time() - start
 
         branch_depth = next_depth + 1
@@ -269,14 +280,23 @@ def sym_sims(a, b, verbose=False):
 
 
     In words:
+    Let A and B correspond to the sets of users who favorited post a or b respectively.
+
     Additive symmetric similarity is the ratio of the quantity of users who favorited
         both post a and b to the quantity of users who favorited either post a or post b.
+
+                                    A intersect B
+                                  = –––––––––––––
+                                      A union B
 
     Multiplicative symmetric similarity is the product of the ratio of the quantity of users
         who favorited both post a and b to the total quantity of users who favorited post a
         and the ratio of the quantity of users who favorited both post a and b to the
         total quantity of users who favorited post b.
 
+                        A union B   A union B
+        =               ––––––––– * –––––––––
+                            A           B
     '''
     print('Similarity between {} and {}'.format(a,b))
     db = Database()
@@ -402,10 +422,11 @@ if __name__ == '__main__':
     if args:
         if args[0] == 'bench':
             symmetric_benchmark()
-            post_id = 0
+            post_ids = []
         else:
-            post_id = int(args[0])
+            post_ids = [int(p) for p in args]
+            print(post_ids)
     else:
-        post_id = int(input('Enter post id: '))
-    if post_id:
-        presample_tree(post_id)
+        post_ids = [int(input('Enter post id: '))]
+    if post_ids:
+        presample_tree(post_ids)

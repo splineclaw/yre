@@ -4,8 +4,9 @@ from requests.adapters import HTTPAdapter
 import json
 import sqlite3
 
-import json
 import time
+from tqdm import tqdm
+
 import random
 from os.path import isfile, dirname, abspath
 import inspect
@@ -90,6 +91,11 @@ class Database():
                            top_4 integer, top_5 integer, top_6 integer,
                            top_7 integer, top_8 integer, top_9 integer,
                            top_10 integer)''')
+
+            self.c.execute('''CREATE TABLE similar_multi
+                          (source_id integer,
+                           related_id integer,
+                           rank integer)''')
 
             self.c.execute('''CREATE TABLE sym_similarity
                            (low_id integer primary key, high_id integer,
@@ -287,6 +293,7 @@ class Database():
         return
 
     def sample_favs(self, fav_limit = constants.MIN_FAVS):
+        # get favs for known ids that don't have fav list yet
         print('Reading known posts...')
         for retry in range(10):
             try:
@@ -318,7 +325,7 @@ class Database():
             self.get_favs(r)
             qty += 1
             print('Got favs for', r, 'in',
-                  round(time.time()-start, 2), 'seconds')
+                  str(round(time.time()-start, 2)).zfill(2), 'seconds')
             if qty % 20 == 0:
                 dt = time.time() - allstart
                 rate = dt/qty
@@ -378,24 +385,46 @@ class Database():
         '''.format(source_db),
         (post_id,))
 
-        return self.c.fetchall()
+        raw = self.c.fetchall()
 
-    def write_similar_row(self, source_id, update_time, similar_list):
+        return [tuple([int(i) for i in x]) for x in raw] # convert all values to ints
+
+    def write_similar(self, source_id, update_time, similar_list):
+
+        print(similar_list)
+
+        multirows = []
+        for r, s in enumerate(similar_list):
+            multirows.append((source_id, s, r+1,))
+
+        print(multirows)
+        print(source_id)
+
         for retry in range(10):
             try:
                 self.c.execute('''
                                insert or replace into similar
                                values (?,?,?,?,?,?,?,?,?,?,?,?)
                                ''',
-                               (source_id, update_time, *similar_list))
+                               (source_id, update_time, *similar_list[:10]))
+                self.c.execute('''
+                               delete from similar_multi where source_id = ?
+                               ''',
+                               (source_id,))
+                self.c.executemany('''
+                               insert or replace into similar_multi
+                               values (?,?,?)
+                               ''',
+                               multirows)
                 self.conn.commit()
+                print("Similars written.")
                 break
             except sqlite3.OperationalError:
-                print('Encountered lock writing similar row. Retries:', retry)
+                print('Encountered lock writing similars. Retries:', retry)
                 if retry == 9:
                     raise sqlite3.OperationalError
                 # database probably locked, back off a bit
-                time.sleep(random.random()*(retry+1)**1.2/10)
+                time.sleep(random.random()*(retry+1)**2/10)
 
     def have_favs_for_id(self, source_id):
         '''
@@ -453,7 +482,7 @@ class Database():
                 # database probably locked, back off a bit
                 time.sleep(random.random()*(retry+1)**1.2/10)
 
-    def update_favorites_subset(self, limit=constants.SUBSET_FAVS_PER_POST, fav_min=constants.MIN_FAVS, fav_max=9999):
+    def update_favorites_subset(self, limit=constants.SUBSET_FAVS_PER_POST, fav_min=constants.MIN_FAVS, fav_max=1e9):
         '''
         Loads only posts over favorite threshhold
         into table favorites_subset. Dramatically reduces compute time.
@@ -464,6 +493,8 @@ class Database():
         print('Deleting old...')
         self.c.execute('''delete from favorites_subset''')
 
+        delete_end = time.time()
+
         print('Selecting and writing new subset, fav range {}-{}, limit {:,}...'.format(
             fav_min, fav_max, limit))
 
@@ -471,12 +502,12 @@ class Database():
 
         q = max(post_ids)
 
-        for id in post_ids:
+        for id in tqdm(post_ids):
             # print progress
-            if id % 10000 == 0:
+            '''if id % 10000 == 0:
                 print('{}/{}: {:5.2f}%'.format(
                     id, q, id/q * 100
-                ))
+                ))'''
 
             self.c.execute('''
                            insert into favorites_subset
@@ -488,14 +519,26 @@ class Database():
                                 limit ?''',
                                 (id, fav_min, fav_max, limit))
 
+        execute_end = time.time()
+
         print('Committing changes.')
         self.conn.commit()
+
+        commit_end = time.time()
         status = 'Done with subset. Fav min {}, limit {:,}. Took {} ({:.4f}ms per post.)'.format(
             fav_min, limit, seconds_to_dhms(time.time()-start),
             (time.time()-start)*1000/q)
         print(status)
-        print('Vacuuming...')
-        self.c.execute('''vacuum''')
+
+        if constants.ENABLE_VACUUM:
+            print('Vacuuming...')
+            self.c.execute('''vacuum''')
+        vacuum_end = time.time()
+
+        print('Delete: {:.0}s. Execute: {:.0}s. Commit: {:.0}s. Vacuum: {:.0}s.'.format(
+              delete_end - start, execute_end - delete_end, commit_end - execute_end,
+              vacuum_end - commit_end
+              ))
         return status
 
     def get_favcount_stats(self, fav_count):
@@ -550,7 +593,10 @@ def main(update_posts=True):
         db.get_all_posts()
 
     db.sample_favs()
+    db.update_favorites_subset()
 
 
 if __name__ == '__main__':
-    main(update_posts=False)
+    #main(update_posts=False)
+    db = Database()
+    db.update_favorites_subset()
