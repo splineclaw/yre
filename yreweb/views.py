@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from django.http import HttpResponse, HttpResponseRedirect
 
-from .yre.analysis import get_ten_similar
+from .yre.analysis import get_n_similar
 from .yre.database import Database
 from .yre import constants
 from .yre import images
@@ -14,10 +14,10 @@ def index(request):
     return HttpResponseRedirect('/{}/'.format(constants.EXAMPLE_POST_ID))
 
 def similar_list(request, source_id):
-    return(HttpResponse(str(get_ten_similar(source_id))))
+    return(HttpResponse(str(get_n_similar(source_id))))
 
 def urls_list(request, source_id):
-    similar_ids = get_ten_similar(source_id)
+    similar_ids = get_n_similar(source_id)
     db = Database()
     urls = db.get_urls_for_ids(similar_ids)
     return(HttpResponse(str(urls)))
@@ -26,7 +26,8 @@ def similar_pics(request, source_id,
                  stale_time=constants.DEFAULT_STALE_TIME,
                  full=False, source='local'):
     start = time.time()
-    similar_ids = get_ten_similar(source_id, stale_time, from_full=full)[:constants.SHOW_N]
+    similar_ids = get_n_similar(source_id, stale_time, from_full=full)[:constants.SIMS_SHOWN]
+    print(similar_ids)
     db = Database()
 
     if source == 'remote':
@@ -52,7 +53,7 @@ def similar_pics(request, source_id,
     elif source == 'local':
         names = [images.image_with_delay(id) for id in similar_ids]
 
-        link_prefix = '../'#'http://localhost:8000/'
+        link_prefix = 'http://localhost:8000/'
         link_urls = [link_prefix+str(id) for id in similar_ids]
 
         zipped = list(zip(similar_ids, names, link_urls))
