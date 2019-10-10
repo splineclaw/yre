@@ -2,7 +2,7 @@ import requests
 from requests.packages.urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 import json
-import sqlite3
+import psycopg2
 
 import json
 import time
@@ -31,7 +31,9 @@ class Database():
     - fix post sampling progress indication when using stop condition
     '''
     def __init__(self):
-        self.conn = psycopg2.connect("dbname=yre user=postgres")
+        self.conn = psycopg2.connect("dbname='{}' user='{}' password='{}' host='{}'".format(
+            constants.DB_NAME, constants.DB_USER, constants.DB_PASSWORD, constants.DB_HOST
+        ))
 
         self.c = self.conn.cursor()
         self.s = requests.session()
@@ -84,20 +86,6 @@ class Database():
                        (source_id integer, updated bigint,
                        sim_post integer, sim_rank integer,
                        unique(source_id,sim_rank))''')
-
-        self.c.execute('''CREATE TABLE IF NOT EXISTS similars
-                       (source_id integer primary key, updated bigint,
-                       top_1 integer, top_2 integer, top_3 integer,
-                       top_4 integer, top_5 integer, top_6 integer,
-                       top_7 integer, top_8 integer, top_9 integer,
-                       top_10 integer)''')
-
-        self.c.execute('''CREATE TABLE IF NOT EXISTS sym_similarity
-                       (low_id integer, high_id integer,
-                       common integer,
-                       add_sim real, mult_sim real,
-                       unique(low_id, high_id))
-                       ''')
 
         self.conn.commit()
         print("Database ready.")
@@ -539,8 +527,8 @@ def main():
     db = Database()
 
     db.init_db()
-    
-    db.get_all_posts()
+
+    #db.get_all_posts()
     #db.get_newer_posts()
 
     db.sample_favs()

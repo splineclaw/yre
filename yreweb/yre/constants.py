@@ -3,6 +3,12 @@ VERSION = '0.0.07'
 USER_AGENT = 'yre {} (splineclaw)'.format(VERSION)
 EXAMPLE_POST_ID = 849988
 
+# postgres settings
+DB_NAME = 'yre'
+DB_USER = 'yreuser'
+DB_PASSWORD = 'yiff' # keep this alphanumeric to avoid insertion issues
+DB_HOST = 'localhost'                                   #(owo)
+
 # rate limiting
 PAGE_DELAY = 2  # 30 per minute
 REQUEST_DELAY = 0.5  # 120 per minute

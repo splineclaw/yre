@@ -16,6 +16,7 @@ import math
 import sys
 import itertools
 from operator import itemgetter
+import psycopg2
 
 
 
