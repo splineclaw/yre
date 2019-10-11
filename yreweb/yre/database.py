@@ -41,7 +41,7 @@ class Database():
 
         retries = Retry(
             total=10,
-            backoff_factor=1,
+            backoff_factor=0.2,
             status_forcelist=[421, 500, 502, 520, 522, 524, 525]
             )
         self.s.mount('http://', HTTPAdapter(max_retries=retries))

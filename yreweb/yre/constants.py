@@ -1,4 +1,4 @@
-VERSION = '0.0.07'
+VERSION = '0.0.08'
 
 USER_AGENT = 'yre {} (splineclaw)'.format(VERSION)
 EXAMPLE_POST_ID = 849988
@@ -11,7 +11,7 @@ DB_HOST = 'localhost'                                   #(owo)
 
 # rate limiting
 PAGE_DELAY = 2  # 30 per minute
-REQUEST_DELAY = 0.5  # 120 per minute
+REQUEST_DELAY = 1 # hard limit is a bit above 0.5s, but 1 is encouraged.
 FAV_REQ_TIMEOUT = 2  # seconds
 
 MIN_FAVS = 25
