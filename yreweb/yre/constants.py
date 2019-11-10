@@ -1,7 +1,7 @@
 VERSION = '0.0.07'
 
 USER_AGENT = 'yre {} (splineclaw)'.format(VERSION)
-EXAMPLE_POST_ID = 849988
+EXAMPLE_POST_ID = 1802000
 
 # postgres settings
 DB_NAME = 'yre'

@@ -235,6 +235,7 @@ class Database():
                              ON CONFLICT DO NOTHING''',
                           (post_id, time.time()))
 
+
     def get_favs(self, id):
         r = self.s.get('https://e621.net/favorite/list_users.json',
                        params={'id': id},
@@ -324,13 +325,6 @@ class Database():
         return self.c.fetchall()
 
     def write_similar_row(self, source_id, update_time, similar_list):
-            self.c.execute('''
-                           insert into similars
-                           values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                           ON CONFLICT DO NOTHING
-                           ''',
-                           (source_id, update_time, *similar_list[:10]))
-
             insert_list = []
             for i, s in enumerate(similar_list):
                 r = i + 1
@@ -346,16 +340,6 @@ class Database():
                            insert_list)
 
             self.conn.commit()
-
-    def have_favs_for_id(self, source_id):
-        '''
-        returns boolean reflecting whether the source has had its favorites recorded.
-        '''
-        self.c.execute('''
-                       select * from favorites_meta where post_id = %s
-                       ''',
-                       (source_id,))
-        return self.c.fetchall()
 
     def get_urls_for_ids(self, id_list):
         urls = []
@@ -448,6 +432,26 @@ class Database():
                         (post_id,))
         return self.c.fetchall()[0][0]
 
+    def have_favs_for_id(self, source_id):
+        '''
+        returns boolean reflecting whether the source has had its favorites recorded.
+        '''
+        self.c.execute('''
+                       select * from favorites_meta where post_id = %s
+                       ''',
+                       (source_id,))
+        return self.c.fetchall()
+
+    def have_post_for_id(self, source_id):
+        '''
+        returns boolean reflecting whether the post is in the posts table.
+        '''
+        self.c.execute('''
+                       select * from posts where id = %s
+                       ''',
+                       (source_id,))
+        return self.c.fetchall()
+
     def get_overlap(self, a, b):
         '''
         Returns the quantity of users who favorited both post a and b.
@@ -464,6 +468,9 @@ class Database():
             (a, b,))
         return self.c.fetchall()[0][0]
 
+    def get_post(self, id):
+        self.get_all_posts(before_id=id+2, stop_count=1)
+
     def calc_and_put_sym_sim(self, low_id, high_id, verbose=False):
         '''
         Computes and inserts into the database the symmetric similarity between
@@ -476,10 +483,23 @@ class Database():
         a = high_id
         b = low_id
 
-        if not self.have_favs_for_id(a):
-            self.get_favs(a)
-        if not self.have_favs_for_id(b):
-            self.get_favs(b)
+        badpair = False
+
+        for id in [a,b]:
+            if not self.have_favs_for_id(id):
+                self.get_favs(id)
+            if not self.have_post_for_id(id):
+                self.get_post(id)
+
+                # possible if deleted
+                if not self.have_post_for_id(id):
+                    print("NOTICE: ID {} does not exist".format(id))
+                    badpair=True
+
+        if badpair:
+            # skip this pair
+            return 1
+
         overlap = self.get_overlap(a, b)
         a_favs = self.get_favcount(a)
         b_favs = self.get_favcount(b)
@@ -506,6 +526,7 @@ class Database():
             mult_sim = 1
 
         self.write_sym_sim_row(low_id, high_id, overlap, add_sim, mult_sim)
+        return 0
 
     def write_sym_sim_row(self, low_id, high_id, overlap, add_sim, mult_sim):
         self.c.execute('''

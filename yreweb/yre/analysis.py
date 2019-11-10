@@ -103,6 +103,7 @@ def compute_similar(source_id, from_full=False, print_enabled=False):
     for r in results:
         if r[0] == source_id or r[1] < min_branch_favs or r[2] < min_post_favs:
             # exclude the source and posts with insufficient favs
+            #print("candidate {} eliminated. {} branch favs, {} post favs".format(r[0],r[1],r[2]))
             continue
         newresults.append(r)
     print(len(newresults),'/',len(results),'selected ({}%)'.format(
@@ -120,6 +121,9 @@ def compute_similar(source_id, from_full=False, print_enabled=False):
     for r in results:
         selected += 1
         bs.append(r[0])
+
+    if not db.have_post_for_id(source_id):
+        return None
 
     a = source_id
     sym_time = time.time()
@@ -307,6 +311,9 @@ def presample_pyramid(root_id, download_target=True,
     traversed_ids = [root_id]
 
     unsampled_results = get_n_similar(root_id)
+    if not unsampled_results:
+        print("No similar for {}".format(root_id))
+        return
     unsampled_posts = []
     for i, r in enumerate(unsampled_results):
         # each element is (depth, rank, id)
