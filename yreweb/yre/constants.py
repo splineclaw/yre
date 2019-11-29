@@ -21,7 +21,7 @@ BRANCH_FAVS_COEFF = 1 # only this fraction of top posts by branch favs will be a
 BRANCH_FAVS_MAX = 1000 # ... or this number, whichever is lesser
 SYM_SIM_MODE = 'add_sim' # 'add_sim' or 'mult_sim'. see analysis.sym_sims for details.
 SIM_PER_POST = 25 # store n similars per post
-SIMS_SHOWN = 25 # show n similars per post
-PRE_DOWNLOAD = True # download SIM_PER_POST posts during presampling
+SIMS_SHOWN = 10 # show n similars per post
+PRE_DOWNLOAD = False # download SIM_PER_POST posts during presampling
 
 DEFAULT_STALE_TIME = 10**7 # seconds

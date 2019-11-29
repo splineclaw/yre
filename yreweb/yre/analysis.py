@@ -38,7 +38,7 @@ def get_n_similar(source_id,
 
     if len(results) < constants.SIM_PER_POST:
         # not yet in db. let's add it!
-        print('Not in database ({}/{} expected found). Fetching...'.format(
+        print('Similars not in database ({}/{} expected found). Computing...'.format(
             len(results), constants.SIM_PER_POST
         ))
         top_n = compute_similar(source_id,
@@ -62,6 +62,9 @@ def get_n_similar(source_id,
                                       from_full=from_full,
                                       print_enabled=compute_print)
 
+    print("analysis.py get_n_similar({}) returning:".format(source_id))
+    print(top_n)
+
     return top_n
 
 def compute_similar(source_id, from_full=False, print_enabled=False):
@@ -79,10 +82,20 @@ def compute_similar(source_id, from_full=False, print_enabled=False):
 
     db = Database()
 
+    if not db.have_post_for_id(source_id):
+        db.get_post(source_id)
+        if not db.have_post_for_id(source_id):
+            print("compute_similar({}): don't have post for id after fetch!".format(source_id))
+            return None
+
     if not db.have_favs_for_id(source_id):
         # post not in database. let's fetch it and recalculate.
         print('Post favorites not in database, fetching...')
         db.get_favs(source_id)
+        if not db.have_favs_for_id(source_id): # didn't work
+            print("FAVORITES STILL NOT PRESENT AFTER FETCH")
+            return None
+
 
     print('Finding common favorites...')
     # slow
@@ -91,6 +104,7 @@ def compute_similar(source_id, from_full=False, print_enabled=False):
     branch_time = time.time() - branch_time
 
     if not results:
+        print("compute_similar({}): get_branch_favs returned nothing!".format(source_id))
         return None
 
     source_favs = max([r[1] for r in results])
@@ -121,9 +135,6 @@ def compute_similar(source_id, from_full=False, print_enabled=False):
     for r in results:
         selected += 1
         bs.append(r[0])
-
-    if not db.have_post_for_id(source_id):
-        return None
 
     a = source_id
     sym_time = time.time()
@@ -170,8 +181,12 @@ def compute_similar(source_id, from_full=False, print_enabled=False):
 
         db.write_similar_row(source_id, time.time(), top_n_ids)
 
+        print("compute_similar({}) returning:".format(source_id))
+        print(top_n_ids)
+
         return top_n_ids
     else:
+        print("NOT top_n_ids IN compute_similar({})!".format(source_id))
         return None
 
 
@@ -351,7 +366,7 @@ def presample_pyramid(root_id, download_target=True,
             if download_target:
                 images.image_with_delay(next_id)
             if download_similar:
-                for b in branch_ids:
+                for b in branch_ids[:constants.SIMS_SHOWN]:
                     images.image_with_delay(b)
         else:
             branch_ids = known_branches[next_id]

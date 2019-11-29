@@ -41,7 +41,7 @@ def similar_pics(request, source_id,
             new_url += u[slicepoint:]
             urls_preview.append(new_url)
 
-        e6prefix = 'http://localhost:8000/'#'https://e621.net/post/show/'
+        e6prefix = 'http://localhost:6210/'#'https://e621.net/post/show/'
         e6urls = [e6prefix+str(id) for id in similar_ids]
 
         zipped = list(zip(similar_ids, urls, e6urls))
@@ -53,7 +53,7 @@ def similar_pics(request, source_id,
     elif source == 'local':
         names = [images.image_with_delay(id) for id in similar_ids]
 
-        link_prefix = 'http://localhost:8000/'
+        link_prefix = 'http://localhost:6210/'
         link_urls = [link_prefix+str(id) for id in similar_ids]
 
         zipped = list(zip(similar_ids, names, link_urls))
