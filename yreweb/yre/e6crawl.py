@@ -258,6 +258,9 @@ class DBInterface():
         self.logger = logging.getLogger('e6crawl.DBInterface')
 
     def __del__(self):
+        self.logger.debug('DB __del__, will {} commit'.format(
+            'not' if not self.commit_on_del else ''
+        ))
         if self.commit_on_del:
             self.conn.commit()
         self.conn.close()
@@ -585,12 +588,14 @@ def main():
     #db.save_user(net.fetch_user(326127))
     #print(net.fetch_users(a=326127))
     #s.multi_user(a=326127)
-    s.crawl_all_users(start=42394)
+    s.crawl_all_users(start=110707)
 
 
 if __name__ == '__main__':
     try:
-        coloredlogs.install(level='DEBUG')
+        fmt = '%(asctime)s %(name)s[%(process)d] %(levelname)s %(message)s'
+        datefmt = '%m-%d %H:%M:%S'
+        coloredlogs.install(level='DEBUG', fmt=fmt, datefmt=datefmt)
     except NameError:
         logging.basicConfig(level=logging.DEBUG)
     main()
