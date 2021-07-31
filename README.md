@@ -27,7 +27,9 @@ Optional:
 
 This project is very much a work in progress.
 
-The database is updated by running `yreweb/yre/database.py`. 
+Make a copy of `yre/yreweb/yre/secrets.py.template` as `secrets.py` and add relevant credentials.
+
+Perform scraping tasks by changing directory to `yre/yreweb/yre/` and running `e6crawl.py`.
 
 Launch the web interface by running `python manage.py runserver` in the root directory.
 
