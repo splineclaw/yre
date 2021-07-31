@@ -24,6 +24,12 @@ except ImportError:
     # in case of differently named package
     from BeautifulSoup4 import BeautifulSoup
 
+try:
+    import coloredlogs
+except ImportError:
+    logging.info('Optional dependency coloredlogs not found.')
+
+
 
 '''
 e6crawl.py
@@ -94,6 +100,8 @@ class NetInterface():
 
         self.throttle_stop = 0 # timestamp of throttle conclusion
 
+        self.logger = logging.getLogger('e6crawl.NetInterface')
+
     def wait(self, throttle_duration=constants.PAGE_DELAY):
         while time.time() < self.throttle_stop:
             time.sleep(0.01)
@@ -103,7 +111,7 @@ class NetInterface():
         throttle_duration = constants.REQUEST_DELAY if '.json' in url else constants.PAGE_DELAY
         self.wait(throttle_duration)
         response = self.s.get(url, params=params)
-        logging.debug('get ({}) took {:.3f}s on {}'.format(
+        self.logger.debug('get ({}) took {:.3f}s on {}'.format(
             response.status_code, response.elapsed.total_seconds(), response.url
         ))
         return response
@@ -247,6 +255,8 @@ class DBInterface():
 
         self.commit_on_del = True
 
+        self.logger = logging.getLogger('e6crawl.DBInterface')
+
     def __del__(self):
         if self.commit_on_del:
             self.conn.commit()
@@ -262,10 +272,10 @@ class DBInterface():
 
         if self.stale_ops >= 50:
             self.do_commit()
-            logging.debug('Did automatic commit (quantity criterion).')
+            self.logger.debug('Did automatic commit (quantity criterion).')
         elif self.stale_time < time.time():
             self.do_commit()
-            logging.debug('Did automatic commit (time criterion).')
+            self.logger.debug('Did automatic commit (time criterion).')
             
 
     def do_commit(self):
@@ -380,7 +390,7 @@ class DBInterface():
              'is_pending':is_pending, 'is_flagged':is_flagged, 'is_deleted':is_deleted}
         )
 
-        logging.debug('Saved post {}'.format(str(id)))
+        self.logger.debug('Saved post {}'.format(str(id)))
         self.did_op()
 
     def save_tags(self, id, tags):
@@ -450,7 +460,7 @@ class DBInterface():
             datadict
         )
 
-        logging.debug('Saved user {} ({})'.format(datadict['user_id'], datadict['user_name']))
+        self.logger.debug('Saved user {} ({})'.format(datadict['user_id'], datadict['user_name']))
         self.did_op()
 
 
@@ -477,6 +487,8 @@ class Scraper():
         self.net = net
         self.db = db
 
+        self.logger = logging.getLogger('e6crawl.Scraper')
+
 
     def single_user_favs(self, user_id):
         '''
@@ -486,7 +498,7 @@ class Scraper():
         Returns list of post ids.
         '''
         posts = self.net.fetch_user_fav_posts(user_id)
-        logging.debug('Got {} favorites from user {}'.format(len(posts), user_id))
+        self.logger.debug('Got {} favorites from user {}'.format(len(posts), user_id))
         post_ids = [p['id'] for p in posts]
         self.db.save_favs_from_user(user_id, post_ids)
         self.db.save_posts(posts)
@@ -540,14 +552,14 @@ class Scraper():
             new_a = max([u['user_id'] for u in multi_data])
             if(new_a <= a):
                 running = False
-                logging.debug('User crawl stopped: no new users')
+                self.logger.debug('User crawl stopped: no new users')
                 break
             if(end and new_a < end):
                 running = False
-                logging.debug('User crawl stopped: reached end id')
+                self.logger.debug('User crawl stopped: reached end id')
                 break
             a = new_a
-        logging.info('Done crawling users. Stopped at user_id {}.'.format(a))
+        self.logger.info('Done crawling users. Stopped at user_id {}.'.format(a))
 
 
 
@@ -573,11 +585,14 @@ def main():
     #db.save_user(net.fetch_user(326127))
     #print(net.fetch_users(a=326127))
     #s.multi_user(a=326127)
-    s.crawl_all_users(start=9050)
+    s.crawl_all_users(start=42394)
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.DEBUG)
+    try:
+        coloredlogs.install(level='DEBUG')
+    except NameError:
+        logging.basicConfig(level=logging.DEBUG)
     main()
 
 
