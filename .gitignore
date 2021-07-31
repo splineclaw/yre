@@ -9,6 +9,8 @@ yreweb/yre/csv-export.sql
 yreweb/yre/msg1k.csv
 yreweb/yre/msg1k.zip
 yreweb/yre/sample_multi.sh
+yreweb/yre/logs/*
+yreweb/yre/secrets.py
 
 # C extensions
 *.so

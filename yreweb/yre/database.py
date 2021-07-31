@@ -3,12 +3,15 @@ from requests.packages.urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 import json
 import psycopg2
+import logging
 
 import json
 import time
 import random
 from os.path import isfile, dirname, abspath
 import inspect
+import datetime
+import dateutil.parser
 
 try:
     from . import constants
@@ -26,6 +29,14 @@ class Database():
     Database handles database access.
     For now, it also performs remote access.
 
+    PRIORITY TODO:
+    - fix save_tags to use dict
+    - replace status with flag system
+    - store score components
+    - store creation time (now alphanumeric)
+    - store file, sample, preview URLs from array group
+    - resolve reliance on before_id
+
     TODO:
     - better remote error handling
     - fix post sampling progress indication when using stop condition
@@ -37,14 +48,16 @@ class Database():
 
         self.c = self.conn.cursor()
         self.s = requests.session()
-        self.s.headers.update({'user-agent': constants.USER_AGENT})
+        self.s.headers.update({'user-agent': constants.USER_AGENT,
+                                'login': constants.API_USER,
+                                'api_key': constants.API_KEY})
 
         retries = Retry(
-            total=10,
+            total=2,
             backoff_factor=1,
             status_forcelist=[421, 500, 502, 520, 522, 524, 525]
             )
-        self.s.mount('http://', HTTPAdapter(max_retries=retries))
+        #self.s.mount('http://', HTTPAdapter(max_retries=retries))
         self.s.mount('https://', HTTPAdapter(max_retries=retries))
 
         self.commit_on_del = True
@@ -108,7 +121,9 @@ class Database():
             updated = time.time()
         d = post_dict  # for brevity
 
-        self.save_tags(d['id'], d['tags'])
+        print(d)
+
+        #self.save_tags(d['id'], d['tags']) #disabled for now (now a dict rather than list)
 
         has_sample = 0
         if 'sample_url' in d and d['sample_url'] != d['file_url']:
@@ -118,6 +133,8 @@ class Database():
         if 'preview_url' in d and d['preview_url'] != d['file_url']:
             has_preview = 1
 
+        creation_time = dateutil.parser.isoparse(d['created_at']).timestamp()
+
         self.c.execute('''INSERT INTO posts VALUES
                       (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                       ON CONFLICT (id) DO UPDATE SET
@@ -126,26 +143,54 @@ class Database():
                       rating = EXCLUDED.rating,
                       updated = EXCLUDED.updated''',
                        (d['id'],
-                        d['status'],
+                        0, #d['status'], # disabled for now (changed to flag system)
                         d['fav_count'],
-                        d['score'],
+                        d['score']['total'],
                         d['rating'],
-                        d['created_at']['s'],
+                        creation_time, # d['created_at'], changed to alphanumeric
                         updated,
-                        d['md5'] if 'md5' in d else 0,
-                        d['file_url'] if 'file_url' in d else 0,
-                        d['sample_url'] if 'sample_url' in d else 0,
-                        d['preview_url' if 'preview_url' in d else 0]))
+                        d['file']['md5'],
+                        d['file']['url'], #d['file'] if 'file_url' in d else 0, (changed to array group)
+                        d['sample']['url'] if 'sample' in d else 0,
+                        d['preview']['url'] if 'preview' in d else 0
+                        ))
 
-    def get_all_posts(self, before_id=None, after_id=0, stop_count=None):
+    def get_all_posts_forward(self, before_id=None, after_id=None,
+                      stop_count=None, per_get_limit=320):
+        # iterates from oldest to newest (low to high id)
+        # starts above before_id (the id that is before the fetch interval)
+        # and continues to id_after
+        # can be limited to stop_count posts to fetch
         max_id = None
         count = 0
+        if before_id == None:
+            before_id = 0
+
         while before_id != -1:
             start = time.time()
+            '''
+            the old way
             r = self.s.get('https://e621.net/post/index.json',
                     params={'before_id': before_id, 'limit': '320'})
+            '''
+            '''
+            From API Doc:
+            page The page that will be returned.
+            Can also be used with a or b + post_id to get the posts after or before the specified post ID.
+            For example a13 gets every post after post_id 13 up to the limit.
+            '''
+            search = 'score:>={} -video'.format(constants.MIN_FAVS)
+
+            r = self.s.get('https://e621.net/posts.json',
+                    params={
+                        'tags': search,
+                        'limit': str(per_get_limit),
+                        'page':'a{}'.format(before_id)})
             request_elapsed = time.time() - start
-            j = json.loads(r.text)
+            logging.debug('GET to {} took {:.3f}s'.format(r.url, request_elapsed))
+            logging.debug(r)
+            
+            j = json.loads(r.text)['posts'] # provides list of posts
 
             if len(j) > 0:
                 count += len(j)
@@ -154,28 +199,14 @@ class Database():
                     self.save_post(p, updated=t)
                 self.conn.commit()
                 save_elapsed = time.time() - t
-                before_id = min([p['id'] for p in j])
+                before_id = max([p['id'] for p in j])
 
             else:
                 # we've exhausted all posts
                 before_id = -1
                 break
 
-            if max_id is None:
-                max_id = j[0]['id']
-                print('Starting with {}'.format(max_id))
-            else:
-                # print progress and statistics
-                quantity = max_id - after_id
-                progress = (max_id - before_id - after_id) / quantity
-                print('{}/{} ({:05.2f}%)  req: {:04.3f}s, save: {:04.3f}s'.format(
-                                           str(before_id).zfill(7),
-                                           str(quantity).zfill(7),
-                                           progress*100,
-                                           request_elapsed,
-                                           save_elapsed))
-
-            if before_id < after_id:
+            if after_id and (before_id >= after_id):
                 before_id = -1
                 break
 
@@ -187,31 +218,14 @@ class Database():
                 break
 
             while time.time() - start < constants.PAGE_DELAY:
-                # rate limit to 1 hz
-                time.sleep(0.001)
-
-    def get_older_posts(self):
-        # only useful for partial initial downloads
-        before_id = [id for id in self.c.execute(
-            '''SELECT MIN(id) FROM posts''')][0][0]
-        print('Found oldest post:', before_id)
-        self.get_all_posts(before_id)
+                # rate limit to 1 hz to nearest 10ms
+                time.sleep(0.01)
 
     def get_newer_posts(self):
         self.c.execute('''SELECT MAX(id) FROM posts''')
-        after_id = [id for id in self.c.fetchall()][0][0]
-        print('Found newest post:', after_id)
-        self.get_all_posts(after_id=after_id)
-
-    def get_recent_posts(self, stop_count=1000):
-        print('Getting newest {} posts.'.format(stop_count))
-        self.get_all_posts(stop_count=stop_count)
-
-    def get_newer_and_recent(self, recent_count=1000):
-        after_id = [id for id in self.c.execute(
-            '''SELECT MAX(id) FROM posts''')][0][0]
-        print('Found newest post:', after_id)
-        self.get_all_posts(after_id=after_id - recent_count)
+        before_id = [id for id in self.c.fetchall()][0][0]
+        print('Found newest post:', before_id)
+        self.get_all_posts_forward(before_id=before_id)
 
     def get_post_ids(self):
         self.c.execute(
@@ -219,38 +233,56 @@ class Database():
         results = self.c.fetchall()
         return [id[0] for id in results]
 
-    def save_favs(self, post_id, favorited_users):
-        for u in favorited_users:
+    def save_favs_from_user(self, user_id, post_ids):
+        for post_id in post_ids:
             self.c.execute(
                           '''INSERT INTO
                              post_favorites(post_id, favorited_user)
                              VALUES (%s,%s)
                              ON CONFLICT DO NOTHING''',
-                          (post_id, u))
+                          (post_id, user_id))
 
-            self.c.execute(
-                          '''INSERT INTO
-                             favorites_meta(post_id, updated)
-                             VALUES (%s,%s)
-                             ON CONFLICT DO NOTHING''',
-                          (post_id, time.time()))
+        self.c.execute(
+                        '''INSERT INTO
+                            favorites_meta(post_id, updated)
+                            VALUES (%s,%s)
+                            ON CONFLICT DO NOTHING''',
+                        (user_id, time.time()))
 
 
-    def get_favs(self, id):
+    def get_favs_from_user(self, user_id):
+        '''
+        used to be able to get users per post like so
         r = self.s.get('https://e621.net/favorite/list_users.json',
                        params={'id': id},
                        timeout=constants.FAV_REQ_TIMEOUT)
+
+        functionality has been removed from API
+        still available at https://e621.net/posts/{id}/favorites
+
+        https://github.com/zwagoth/e621ng/blob/master/app/views/post_favorites/index.html.erb
+
+        https://github.com/zwagoth/e621ng/issues/248
+        The crux of the problem is that results have to be filtered by visibility on users.
+        Loading thousands of user records takes a long time, lots of memory, etc.
+        The way it's currently expressed in the database isn't conducive to rapid filtering on the database side either.
+        Limiting this to a single direction(user->posts) solves a lot of the visibility check problems.
+
+
+        Move to iterating across users? https://e621.net/users (no api endpoint)
+
+        max user:  965269
+        max post: 2852084
+
+        '''
+        r = self.s.get('https://e621.net/favorites.json',
+                        params={'user_id': user_id})
         j = json.loads(r.text)
-        if 'favorited_users' not in j:
-            print('No favs retrieved! Timed out%s')
-            return
-        favorited_users = j['favorited_users'].split(',')
-        if len(favorited_users) == 0:
-            print('No favs retrieved! Timed out%s')
-        self.save_favs(id, favorited_users)
+        post_ids = [p['id'] for p in j['posts']]
+        self.save_favs(user_id, post_ids)
         return
 
-    def sample_favs(self, fav_limit = constants.MIN_FAVS):
+    def sample_favs_from_posts(self, fav_limit = constants.MIN_FAVS):
         print('Reading known posts...')
         self.c.execute(
             '''select
@@ -261,9 +293,6 @@ class Database():
                 fav_count desc''',
                (fav_limit,))
         remaining = self.c.fetchall()
-
-
-
 
         q = len(remaining)
         print('{:,} posts to get (fav limit {}). Optimal time {}.'.format(
@@ -547,10 +576,10 @@ class Database():
 def main():
     db = Database()
 
-    db.init_db()
+    #db.init_db()
 
     #db.get_all_posts()
-    #db.get_newer_posts()
+    db.get_newer_posts()
 
     db.sample_favs()
 

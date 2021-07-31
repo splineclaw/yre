@@ -1,20 +1,16 @@
-VERSION = '0.0.07'
+from secrets import *
 
-USER_AGENT = 'yre {} (splineclaw)'.format(VERSION)
+VERSION = '0.0.08'
+
+USER_AGENT = 'yre {} ({})'.format(VERSION, API_USER)
 EXAMPLE_POST_ID = 1802000
-
-# postgres settings
-DB_NAME = 'yre'
-DB_USER = 'yreuser'
-DB_PASSWORD = 'yiff' # keep this alphanumeric to avoid insertion issues
-DB_HOST = 'localhost'                                   #(owo)
 
 # rate limiting
 PAGE_DELAY = 2  # 30 per minute
-REQUEST_DELAY = 0.5  # 120 per minute
-FAV_REQ_TIMEOUT = 2  # seconds
+REQUEST_DELAY = 1  # 60 per minute
+FAV_REQ_TIMEOUT = 3  # seconds
 
-MIN_FAVS = 25
+MIN_FAVS = 20 # applies to both fetch and resample
 SUBSET_FAVS_PER_POST = 256
 BRANCH_FAVS_MIN = 5
 BRANCH_FAVS_COEFF = 1 # only this fraction of top posts by branch favs will be analysed

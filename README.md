@@ -16,6 +16,11 @@ It provides a Django-based web interface by which users may explore related post
 
 - psycopg2-binary
 - Django
+- bs4
+- lxml
+
+Optional:
+- coloredlogs
 
 
 ### Use
