@@ -11,6 +11,7 @@ yreweb/yre/msg1k.zip
 yreweb/yre/sample_multi.sh
 yreweb/yre/logs/*
 yreweb/yre/secrets.py
+yreweb/yre/pagesamples
 
 # C extensions
 *.so
@@ -114,3 +115,4 @@ venv.bak/
 
 # vscode workspace
 *.code-workspace
+.vscode
