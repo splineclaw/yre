@@ -115,6 +115,12 @@ class NetInterface():
             response.status_code, response.elapsed.total_seconds(), response.url
         ))
         return response
+
+    class BadFormatException(Exception):
+        '''
+        Recieved data that did not meet expected format
+        '''
+        pass
     
     def fetch_user_fav_posts(self, user_id):
         '''
@@ -171,7 +177,7 @@ class NetInterface():
         return data
 
     def bs_tag_has_text(self, tag):
-        return tag.text.strip() is not None
+        return tag.string is not None
 
     def fetch_users(self, a=None, b=None):
         '''
@@ -209,15 +215,20 @@ class NetInterface():
         results = []
         rows = tbody.find_all('tr')
         for row in rows:
-            # it seemed like a good idea at the time
+
+            entries = [s for s in row.strings if not s=='\n']
+
+            if len(entries) != 7:
+                message = 'Expected user row length 7, got length {} ({})'.format(
+                    len(entries), entries
+                )
+                self.logger.error(message)
+                raise self.BadFormatException(message)
+
             returnable = {}
-            contents = []
-            for col in row.text.split('\n'):
-                c = col.strip()
-                if c:
-                    contents.append(c)
             for l in lookups:
-                returnable[l] = contents[lookups[l]]
+                returnable[l] = entries[lookups[l]]
+
             link = row.find('a',attrs={'rel':'nofollow'})['href']
             returnable['user_id'] = int(link.split('/')[-1])
             results.append(returnable)
@@ -588,7 +599,7 @@ def main():
     #db.save_user(net.fetch_user(326127))
     #print(net.fetch_users(a=326127))
     #s.multi_user(a=326127)
-    s.crawl_all_users(start=110707)
+    s.crawl_all_users(start=140554)
 
 
 if __name__ == '__main__':
