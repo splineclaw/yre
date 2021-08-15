@@ -18,6 +18,8 @@ import time
 
 import dateutil.parser
 
+import urllib.parse
+
 try:
     from bs4 import BeautifulSoup
 except ImportError:
@@ -49,10 +51,25 @@ Favorites retrieval operation (user-order):
     - select users expected to be most active
     - fetch favorites for each user
         > api endpoint /favorites.json
+            takes numeric user id
             yields post data
+            limited to 75 posts
             403 on private
             404 on user_id not exist
-        > could also search with fav:username (no reason to, though)
+        > favorites page
+            page: favorites?user_id=333077
+                takes numeric user id
+                appears like posts page
+                paginated, does not support a/b syntax
+                supports &limit=
+                fav:<username> appears in search box
+                seems to return more posts than search? 232 vs 225 pages of 3
+        > posts search
+            page: posts?tags=fav%3Asplineclaw+
+                takes text user name
+                supports &limit=
+                paginated, does not support a/b syntax
+            
 
 Alternate favorites retrieval (post-order):
     - e621 no longer provides favorites per post in its API
@@ -74,6 +91,76 @@ As of 2021-07 the maximum user id is roughly 1M and maximum post id is roughly 3
 
 As a side note, user-order retrieval is necessary for furaffinity favorites,
     but not furrynetwork promotions or twitter hearts/retweets.
+
+Undocumented directory e621.net/db_export/ has daily .csv.gz files for:
+    - pools
+    - posts
+    - tag_aliases
+    - tag_implications
+    - tags
+    - wiki_pages
+
+Images, when available, meet the following format:
+(example post 1925483 md5 608cea6ab06a4b0dd78b5506e3f0fb1b)
+Preview (150x150 crop, ~8KiB)
+    /data/preview/
+    https://static1.e621.net/data/preview/60/8c/608cea6ab06a4b0dd78b5506e3f0fb1b.jpg
+Sample (800x800 crop, ~200KiB)
+    /data/sample
+    https://static1.e621.net/data/sample/60/8c/608cea6ab06a4b0dd78b5506e3f0fb1b.jpg
+Original (15000x15000 limit, file size limit depends on file type)
+    /data/
+    https://static1.e621.net/data/60/8c/608cea6ab06a4b0dd78b5506e3f0fb1b.png
+
+Maximum dimensions: 15000px in either direction.
+
+Type	Deprecated	Maximum Filesize
+PNG	        No	         75 MB	
+JPEG	    No	         75 MB	
+GIF	        No	         20 MB	
+APNG	    No	         20 MB
+    Filetype has to be .png instead of .apng.
+    Extension can be simply renamed as both are valid extensions.
+WebM	    No	        100 MB
+    VP9 with Opus for audio preferred, VP8 and Vorbis supported. Matroska container (.mkv) not supported.
+    Should be YUV420 8bit, audio either mono or stereo and 48KHz/44.1KHz.
+SWF (Flash)	Yes	        100 MB
+    No longer accepted as upload format. See forum #283261 for more information.
+
+
+Details on search pages:
+
+    Searches with additional pages have an <a id="paginator-next">.
+    'article' includes
+        post id
+        has sound
+        tags
+        rating
+        uploader id
+        uploader name
+        file extension
+        score
+        favcount
+        is favorited
+        file url
+        sample url
+        preview url
+
+    Post hyperlink url includes post id
+
+    Preview url (if exist) includes MD5
+
+    Mouseover text includes:
+        Rating
+        ID
+        Date (creation)
+        Status
+        Score (sum)
+        Tags
+
+
+Example valid URLs:
+https://e621.net/posts?page=3&limit=5
 
 '''
 
@@ -121,10 +208,17 @@ class NetInterface():
         Recieved data that did not meet expected format
         '''
         pass
-    
-    def fetch_user_fav_posts(self, user_id):
+
+    class EmailProtectedException(Exception):
         '''
-        From a user, fetch and return favorite posts.
+        Detected protected email
+        '''
+        pass
+    
+    def fetch_api_user_fav_posts(self, user_id):
+        '''
+        From a user, fetch and return favorite posts, using the API.
+        Limited to 75 favorites.
 
         user_id : numeric id of user
         
@@ -191,8 +285,15 @@ class NetInterface():
         returns a list of dicts
                {user_id, user_name, join_date,
                 posts, post_changes}
-        '''
 
+        Some usernames are broken by Cloudflare's email protection. For now, these are skipped.
+
+        142548, named qVmZ&HGv&xAS4k@^xgl7
+        actual
+            qVmZ&amp;HGv&amp;xAS4k@^xgl7
+        cloudflare'd
+            qVmZ&amp;HGv&amp;<span class="__cf_email__" data-cfemail="4a320b197e210a">[email protected]</span>^xgl7
+        '''
         
         url = 'https://e621.net/users?page={}{}'.format(
             'a' if a is not None else 'b', a if a is not None else b
@@ -223,17 +324,50 @@ class NetInterface():
                     len(entries), entries
                 )
                 self.logger.error(message)
-                raise self.BadFormatException(message)
+                self.logger.debug(row)
+            else:
 
-            returnable = {}
-            for l in lookups:
-                returnable[l] = entries[lookups[l]]
+                returnable = {}
+                for l in lookups:
+                    returnable[l] = entries[lookups[l]]
 
-            link = row.find('a',attrs={'rel':'nofollow'})['href']
-            returnable['user_id'] = int(link.split('/')[-1])
-            results.append(returnable)
+                link = row.find('a',attrs={'rel':'nofollow'})['href']
+                returnable['user_id'] = int(link.split('/')[-1])
+                results.append(returnable)
 
+        if len(results) == 0:
+            raise self.BadFormatException()
         return results
+    
+    def fetch_fav_ids(self, user_id):
+        '''
+        use  /favorites?user_id=  page to get post_ids favorited by a user_id
+
+        returns list of unique post_ids
+        '''
+        base_url = 'https://e621.net'
+        url = 'https://e621.net/favorites?user_id={}&limit=300'.format(user_id)
+        ids = []
+
+        while url:
+            r = self.get(url)
+            soup = BeautifulSoup(r.text, 'lxml')
+            # get ids
+            arts = soup.find_all('article')
+            for art in arts:
+                ids.append( art['data-id'] )
+            
+            next_btn = soup.find('a', id='paginator-next')
+            if not next_btn:
+                url = None
+                break
+            url = urllib.parse.urljoin(base_url, next_btn['href'])
+        
+        ids = list(set(ids))
+
+        self.logger.debug('got {} favorites from user_id {}'.format(len(ids), user_id))
+        return ids
+
 
 
 
@@ -298,7 +432,7 @@ class DBInterface():
         self.stale_time = time.time() + self.criterion_stale_time_interval
 
 
-    def save_favs_from_user(self, user_name, post_ids):
+    def save_favs_from_user(self, user_id, post_ids):
         '''
         user_name : user whose favorites are to be stored
         post_ids : list of integer post ids of favorited posts
@@ -308,10 +442,18 @@ class DBInterface():
         for post_id in post_ids:
             self.c.execute(
                             '''INSERT INTO
-                                post_favorites(post_id, favorited_user)
+                                favorites(post_id, user_id)
                                 VALUES (%s,%s)
                                 ON CONFLICT DO NOTHING''',
-                            (post_id, user_name))
+                            (post_id, user_id))
+            self.c.execute(
+                            '''INSERT INTO
+                                user_favorites_meta(user_id, updated)
+                                VALUES (%s,%s)
+                                ON CONFLICT (user_id) DO UPDATE SET
+                                (user_id, updated) =
+                                (EXCLUDED.user_id, EXCLUDED.updated)''',
+                            (user_id, time.time()))
         self.did_op()
     
     def save_posts(self, posts):
@@ -477,6 +619,22 @@ class DBInterface():
         self.logger.debug('Saved user {} ({})'.format(datadict['user_id'], datadict['user_name']))
         self.did_op()
 
+    def fetch_user_ids_generator(self, start_id=0):
+        '''
+        Yields user ids one at a time. Suitable for slow iteration.
+        '''
+        has_data = True
+
+        with self.conn.cursor() as id_c:
+            id_c.execute('SELECT user_id FROM users WHERE user_id>=%s ORDER BY user_id', (start_id,))
+
+            while has_data:
+                fetch = id_c.fetchone()
+                if not fetch:
+                    has_data = False
+                    break
+                yield fetch[0]
+
 
 
 
@@ -514,7 +672,7 @@ class Scraper():
         posts = self.net.fetch_user_fav_posts(user_id)
         self.logger.debug('Got {} favorites from user {}'.format(len(posts), user_id))
         post_ids = [p['id'] for p in posts]
-        self.db.save_favs_from_user(user_id, post_ids)
+        self.db.save_favs_from_user(user_id=user_id, post_ids=post_ids)
         self.db.save_posts(posts)
         return post_ids
 
@@ -575,6 +733,19 @@ class Scraper():
             a = new_a
         self.logger.info('Done crawling users. Stopped at user_id {}.'.format(a))
 
+    
+    def crawl_favs_known_users(self, start_id=0):
+        '''
+        Get favorites from known user_ids in ascending order.
+        Saves favorites graph and post information.
+        '''
+
+        # do loop here
+        for user_id in self.db.fetch_user_ids_generator(start_id):
+            
+            favs = self.net.fetch_fav_ids(user_id)
+            self.db.save_favs_from_user(user_id, favs)
+
 
 
 
@@ -592,6 +763,26 @@ def main():
     s = Scraper(net,db)
 
     # use user 326127 (VolcanicAsh) for fetch testing due to only 16 favorites
+    '''
+    weird usernames
+    ---------------
+    user   5099 named !@N
+    user   9022 named the bay6@hotmail.com
+    user  97318 named $%#!@#$%%
+    user 140590 named (two spaces)
+    user 142548 named qVmZ&HGv&xAS4k@^xgl7
+    
+
+    other oddities
+    --------------
+    user 213725 (BlueDingo) has -13 favorites
+
+    test accounts
+    -------------
+    user 326127 (VolcanicAsh): only 16 favorites
+    user 333077 (splineclaw): hey that's me
+    user 979066 (test_acct_pls_ignore): me, also, but safe
+    '''
 
     #print(s.net.fetch_user_fav_posts(326127))
     #s.single_user_favs(326127)
@@ -599,7 +790,10 @@ def main():
     #db.save_user(net.fetch_user(326127))
     #print(net.fetch_users(a=326127))
     #s.multi_user(a=326127)
-    s.crawl_all_users(start=140554)
+    #s.crawl_all_users(start=186609)
+
+    #print(net.fetch_fav_ids(333077))
+    s.crawl_favs_known_users()
 
 
 if __name__ == '__main__':
