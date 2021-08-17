@@ -77,6 +77,12 @@ Alternate favorites retrieval (post-order):
          so the operation is expensive)
     - however, webpage providing same functionality is available
             /posts/{id}/favorites (paginated)
+            source: e621ng/app/views/post_favorites/index.html.erb
+            limited to 80 per page, not adjustable
+            exposes:
+                user name
+                user id
+                user's favorite count
     - due to expense, use only for pages ill-served by user-order fetching
     - enables user discovery (for fetch prioritization)
 
@@ -161,6 +167,20 @@ Details on search pages:
 
 Example valid URLs:
 https://e621.net/posts?page=3&limit=5
+
+
+How Long Will This Take?
+    Assume:
+        1/5 of users have favorites
+        There are 1 million users
+        Favorites are sampled in sets of 300
+        Each query, hit or miss, takes 2 seconds
+        There are 150 million favorites total
+    Then:
+        miss_count = 4/5 * 1e6 = 800e3
+        hit_count = 150e6 / 300 = 500e3
+        query_count = miss_count + hit_count = 1.3e6
+        time = 1.3e6 * 2 s = 2.6e6 s = 30.09 days
 
 '''
 
@@ -793,7 +813,7 @@ def main():
     #s.crawl_all_users(start=186609)
 
     #print(net.fetch_fav_ids(333077))
-    s.crawl_favs_known_users()
+    s.crawl_favs_known_users(5039)
 
 
 if __name__ == '__main__':
