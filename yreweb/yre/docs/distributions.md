@@ -4,7 +4,7 @@
 ![posts](graphics/posts.png)
 ![cumulative posts](graphics/cum_posts.png)
 
-### Each favorite, binned into its post's favcount
+### Each favorite, binned by its post's favcount
 ![favs](graphics/favs.png)
 ![cumulative favs](graphics/cum_favs.png)
 
@@ -17,7 +17,7 @@ Example numbers (old data), post 1893674 (smiling man with cats forming a beard)
 
 ![catman](graphics/9d9a16883bbd87f88f767a00c039bf40.jpg)
 - 40 favorites are recorded.
-- These 40 users together have 503736 favorites.
+- These 40 users together have 503736 favorites on 362455 posts.
 - Each user had between 67000 and 37 total favorites
   - No obvious outliers in distribution of user favorite counts
 - The majority (52%) of favorites were "alone", made on a post by one user in the group and no others

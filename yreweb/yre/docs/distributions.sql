@@ -2,7 +2,13 @@ select count(post_id) from post_favorites_old
 	where favorited_user in 
 	(select favorited_user from post_favorites_old
 	 where post_id=1893674)
--- 503,736
+-- 503736
+
+select count(distinct post_id) from post_favorites_old
+	where favorited_user in 
+	(select favorited_user from post_favorites_old
+	 where post_id=1893674)
+-- 362455
 
 select
 	distinct favorited_user as username,
