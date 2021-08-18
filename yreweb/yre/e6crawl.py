@@ -246,7 +246,7 @@ class NetInterface():
         br.open('https://e621.net/session/new')
         br.select_form(nr=0)
         br.form['name'] = constants.API_USER
-        br.form['password'] = constants.API_PASSWORD
+        br.form['password'] = constants.USER_PASSWORD
         br.submit()
 
         for c in cj:
