@@ -609,14 +609,14 @@ class DBInterface():
                                 VALUES (%s,%s)
                                 ON CONFLICT DO NOTHING''',
                             (post_id, user_id))
-            self.c.execute(
-                            '''INSERT INTO
-                                post_favorites_meta(post_id, updated)
-                                VALUES (%s,%s)
-                                ON CONFLICT (post_id) DO UPDATE SET
-                                (post_id, updated) =
-                                (EXCLUDED.post_id, EXCLUDED.updated)''',
-                            (user_id, time.time()))
+        self.c.execute(
+                        '''INSERT INTO
+                            post_favorites_meta(post_id, updated)
+                            VALUES (%s,%s)
+                            ON CONFLICT (post_id) DO UPDATE SET
+                            (post_id, updated) =
+                            (EXCLUDED.post_id, EXCLUDED.updated)''',
+                        (post_id, time.time()))
         self.did_op()
 
     def save_user_favcounts(self, data):
