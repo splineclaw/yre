@@ -503,7 +503,7 @@ class NetInterface():
                 break 
 
         #ids = list(set(ids))
-        self.logger.debug('got {} favorites from post id {}'.format(len(data), post_id))
+        self.logger.debug('got {} favorites from post id {}'.format(len(results), post_id))
         #return ids
         return results
 
@@ -585,14 +585,14 @@ class DBInterface():
                                 VALUES (%s,%s)
                                 ON CONFLICT DO NOTHING''',
                             (post_id, user_id))
-            self.c.execute(
-                            '''INSERT INTO
-                                user_favorites_meta(user_id, updated)
-                                VALUES (%s,%s)
-                                ON CONFLICT (user_id) DO UPDATE SET
-                                (user_id, updated) =
-                                (EXCLUDED.user_id, EXCLUDED.updated)''',
-                            (user_id, time.time()))
+        self.c.execute(
+                        '''INSERT INTO
+                            user_favorites_meta(user_id, updated, fav_count)
+                            VALUES (%s,%s,%s)
+                            ON CONFLICT (user_id) DO UPDATE SET
+                            (user_id, updated, fav_count) =
+                            (EXCLUDED.user_id, EXCLUDED.updated, EXCLUDED.fav_count)''',
+                        (user_id, time.time(), len(post_ids)))
         self.did_op()
 
     def save_favs_from_post(self, post_id, user_ids):
@@ -611,12 +611,12 @@ class DBInterface():
                             (post_id, user_id))
         self.c.execute(
                         '''INSERT INTO
-                            post_favorites_meta(post_id, updated)
-                            VALUES (%s,%s)
+                            post_favorites_meta(post_id, updated, fav_count)
+                            VALUES (%s,%s,%s)
                             ON CONFLICT (post_id) DO UPDATE SET
-                            (post_id, updated) =
-                            (EXCLUDED.post_id, EXCLUDED.updated)''',
-                        (post_id, time.time()))
+                            (post_id, updated, fav_count) =
+                            (EXCLUDED.post_id, EXCLUDED.updated, EXCLUDED.fav_count)''',
+                        (post_id, time.time(), len(user_ids)))
         self.did_op()
 
     def save_user_favcounts(self, data):
@@ -989,7 +989,9 @@ def main():
     #net.do_login()
     #net.fetch_post_favs(2169530)
 
-    s.single_post_favs(2169530)
+    #s.single_post_favs(2825879)
+
+    s.crawl_favs_known_users(19833)
 
 if __name__ == '__main__':
     try:
