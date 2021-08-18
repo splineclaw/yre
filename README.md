@@ -18,6 +18,7 @@ It provides a Django-based web interface by which users may explore related post
 - Django
 - bs4
 - lxml
+- mechanize
 
 Optional:
 - coloredlogs

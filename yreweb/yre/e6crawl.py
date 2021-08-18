@@ -20,6 +20,9 @@ import dateutil.parser
 
 import urllib.parse
 
+import mechanize
+import http.cookiejar
+
 try:
     from bs4 import BeautifulSoup
 except ImportError:
@@ -193,21 +196,29 @@ class NetInterface():
     def __init__(self):
         
         self.s = requests.session()
-        self.s.headers.update({'user-agent': constants.USER_AGENT,
+        self.s.headers.update({'User-Agent': constants.USER_AGENT,
                                 'login': constants.API_USER,
                                 'api_key': constants.API_KEY})
 
         retries = Retry(
-            total=2,
-            backoff_factor=4,
+            total=None,
+            connect=10,
+            read=5,
+            redirect=2,
+            status=5, # most likely from experience, sometimes 520s will be thrown for ~30s
+            backoff_factor=4, # 0, 4, 8, 16 ... seconds
             status_forcelist=[421, 500, 502, 520, 522, 524, 525]
             )
+        retries.BACKOFF_MAX = 600, # wait no more than 10 minutes
 
         self.s.mount('https://', HTTPAdapter(max_retries=retries))
 
         self.throttle_stop = 0 # timestamp of throttle conclusion
 
         self.logger = logging.getLogger('e6crawl.NetInterface')
+
+        self.logged_in = False
+        
 
     def wait(self, throttle_duration=constants.PAGE_DELAY):
         while time.time() < self.throttle_stop:
@@ -222,10 +233,52 @@ class NetInterface():
             response.status_code, response.elapsed.total_seconds(), response.url
         ))
         return response
+    
+
+    def do_login(self):
+        self.logger.debug('Trying login.')
+        br = mechanize.Browser()
+        cj = http.cookiejar.CookieJar()
+        br.set_cookiejar(cj)
+        br.set_header('User-Agent', constants.USER_AGENT)
+        br.set_handle_robots(False)
+
+        br.open('https://e621.net/session/new')
+        br.select_form(nr=0)
+        br.form['name'] = constants.API_USER
+        br.form['password'] = constants.API_PASSWORD
+        br.submit()
+
+        for c in cj:
+            self.logger.debug('Got cookie {} = {}'.format(c.name, c.value))
+            print(c.name, c.name == '_danbooru_session')
+            if c.name == '_danbooru_session':
+                self.s.headers.update(
+                    {'cookie': '{}={}'.format(
+                        c.name, c.value
+                    )}
+                )          
+                self.logger.info('Login successful.')
+                self.logged_in = True
+                break
+
+        if not self.logged_in:
+            raise self.LoginFailed()
+
+    def login_if_needed(self):
+        if not self.logged_in:
+            self.do_login()
+
 
     class BadFormatException(Exception):
         '''
         Recieved data that did not meet expected format
+        '''
+        pass
+
+    class LoginFailed(Exception):
+        '''
+        Login failed (did not find cookie)
         '''
         pass
 
@@ -389,6 +442,72 @@ class NetInterface():
         return ids
 
 
+    def fetch_post_favs(self, post_id):
+        '''
+        Get favorites of a post.
+        /posts/{id}/favorites
+
+        todo:
+        - merge code between this and fetch_users
+
+        returns: list of dicts {'user_name':, 'user_favcount':, 'user_id':}
+        '''
+        self.login_if_needed()
+
+        base_url = 'https://e621.net'
+        url = 'https://e621.net/posts/{}/favorites'.format(post_id)
+        ids = []
+
+        results = []
+
+        while url:
+            r = self.get(url)
+            soup = BeautifulSoup(r.text, 'lxml')
+
+            # do stuff
+
+            table = soup.find('table')
+            thead = table.find('thead')
+            tbody = table.find('tbody')
+            rows = tbody.find_all('tr')
+            headings = [h.text for h in thead.find_all('th') if h.text]
+            lookups = {'user_name':0, 'user_favcount':1}
+            
+            for row in rows:
+
+
+                entries = [s for s in row.strings if not s=='\n']
+
+                if len(entries) != 2:
+                    message = 'Expected user row length 2, got length {} ({})'.format(
+                        len(entries), entries
+                    )
+                    self.logger.error(message)
+                    self.logger.debug(row)
+                else:
+
+                    returnable = {}
+                    for l in lookups:
+                        returnable[l] = entries[lookups[l]]
+
+                    link = row.find('a',attrs={'rel':'nofollow'})['href']
+                    returnable['user_id'] = int(link.split('/')[-1])
+                    results.append(returnable)
+
+
+            next_btn = soup.find('a', id='paginator-next')
+            if next_btn:
+                url = urllib.parse.urljoin(base_url, next_btn['href'])
+            else:
+                url = None
+                break 
+
+        #ids = list(set(ids))
+        self.logger.debug('got {} favorites from post id {}'.format(len(data), post_id))
+        #return ids
+        return results
+
+
 
 
 
@@ -475,7 +594,45 @@ class DBInterface():
                                 (EXCLUDED.user_id, EXCLUDED.updated)''',
                             (user_id, time.time()))
         self.did_op()
-    
+
+    def save_favs_from_post(self, post_id, user_ids):
+        '''
+        post_id : post whose favorites are to be stored
+        user_ids : list of integer user ids of favoriting users
+
+        no return
+        '''
+        for user_id in user_ids:
+            self.c.execute(
+                            '''INSERT INTO
+                                favorites(post_id, user_id)
+                                VALUES (%s,%s)
+                                ON CONFLICT DO NOTHING''',
+                            (post_id, user_id))
+            self.c.execute(
+                            '''INSERT INTO
+                                post_favorites_meta(post_id, updated)
+                                VALUES (%s,%s)
+                                ON CONFLICT (post_id) DO UPDATE SET
+                                (post_id, updated) =
+                                (EXCLUDED.post_id, EXCLUDED.updated)''',
+                            (user_id, time.time()))
+        self.did_op()
+
+    def save_user_favcounts(self, data):
+        for d in data:
+            try:
+                self.c.execute(
+                    '''
+                    UPDATE users
+                    SET favorites = %s, meta_updated = %s
+                    WHERE user_id = %s
+                    ''',
+                    (d['user_favcount'], time.time(), d['user_id'])
+                )
+            except psycopg2.errors.NotNullViolation:
+                pass
+
     def save_posts(self, posts):
         '''
         posts : list of JSON objects of post data
@@ -766,6 +923,19 @@ class Scraper():
             favs = self.net.fetch_fav_ids(user_id)
             self.db.save_favs_from_user(user_id, favs)
 
+    def single_post_favs(self, post_id):
+        '''
+        Fetch and save favorite information on a single post.
+
+        Returns data dict.
+        '''
+
+        data = self.net.fetch_post_favs(post_id)
+        user_ids = [u['user_id'] for u in data]
+        user_favcounts = [u['user_favcount'] for u in data]
+        self.db.save_favs_from_post(post_id=post_id, user_ids=user_ids)
+        self.db.save_user_favcounts(data)
+        return data
 
 
 
@@ -813,8 +983,13 @@ def main():
     #s.crawl_all_users(start=186609)
 
     #print(net.fetch_fav_ids(333077))
-    s.crawl_favs_known_users(5039)
 
+    #s.crawl_favs_known_users(10970)
+
+    #net.do_login()
+    #net.fetch_post_favs(2169530)
+
+    s.single_post_favs(2169530)
 
 if __name__ == '__main__':
     try:
