@@ -205,7 +205,7 @@ class NetInterface():
             connect=10,
             read=5,
             redirect=2,
-            status=5, # most likely from experience, sometimes 520s will be thrown for ~30s
+            status=10, # most likely from experience, sometimes 520s will be thrown for a while
             backoff_factor=4, # 0, 4, 8, 16 ... seconds
             status_forcelist=[421, 500, 502, 520, 522, 524, 525]
             )
@@ -214,8 +214,9 @@ class NetInterface():
         self.s.mount('https://', HTTPAdapter(max_retries=retries))
 
         self.throttle_stop = 0 # timestamp of throttle conclusion
-
+        
         self.logger = logging.getLogger('e6crawl.NetInterface')
+        logging.getLogger("urllib3").setLevel(logging.INFO) # suppress redundant debug messages
 
         self.logged_in = False
         
@@ -229,8 +230,9 @@ class NetInterface():
         throttle_duration = constants.REQUEST_DELAY if '.json' in url else constants.PAGE_DELAY
         self.wait(throttle_duration)
         response = self.s.get(url, params=params)
-        self.logger.debug('get ({}) took {:.3f}s on {}'.format(
-            response.status_code, response.elapsed.total_seconds(), response.url
+        self.logger.debug('get ({}) took {:4.3f}s/{:4.3f}s on {}'.format(
+            response.status_code, response.elapsed.total_seconds(),
+            throttle_duration, response.url
         ))
         return response
     
@@ -251,7 +253,6 @@ class NetInterface():
 
         for c in cj:
             self.logger.debug('Got cookie {} = {}'.format(c.name, c.value))
-            print(c.name, c.name == '_danbooru_session')
             if c.name == '_danbooru_session':
                 self.s.headers.update(
                     {'cookie': '{}={}'.format(
@@ -412,15 +413,17 @@ class NetInterface():
             raise self.BadFormatException()
         return results
     
-    def fetch_fav_ids(self, user_id):
+    def fetch_user_fav_posts(self, user_id):
         '''
         use  /favorites?user_id=  page to get post_ids favorited by a user_id
 
         returns list of unique post_ids
         '''
         base_url = 'https://e621.net'
-        url = 'https://e621.net/favorites?user_id={}&limit=300'.format(user_id)
+        url = 'https://e621.net/favorites?limit=300&page=1&user_id={}'.format(user_id)
         ids = []
+
+        self.logger.debug('getting favorites for user_id {}'.format(user_id))
 
         while url:
             r = self.get(url)
@@ -812,7 +815,99 @@ class DBInterface():
                     break
                 yield fetch[0]
 
+    def fetch_user_fav_metadata(self, user_ids):
+        '''
+        Return a list of dictionaries {'user_id', 'updated', 'fav_count'}
+        '''
+        self.c.execute('''
+            SELECT user_id, updated, fav_count FROM user_favorites_meta
+            WHERE user_id in %s
+            ''',
+            (tuple(user_ids),))
+        
+        returnable = []
+        row = self.c.fetchone()
+        while row:
+            returnable.append(
+                {'user_id':row[0],
+                 'updated':row[1],
+                 'fav_count':row[2]} )
+            row = self.c.fetchone()
+        return returnable
 
+    def fetch_user_fav_post_ids(self, user_id):
+        self.c.execute('''
+            SELECT post_id FROM favorites WHERE user_id = %s
+            ''',
+            (user_id,))
+        fetch = self.c.fetchall()
+        if fetch is None:
+            return []
+        post_ids = [d[0] for d in fetch]
+        return post_ids
+
+    def fetch_post_fav_user_ids(self, post_id):
+        self.c.execute('''
+            SELECT user_id FROM favorites WHERE post_id = %s
+            ''',
+            (post_id,))
+        fetch = self.c.fetchall()
+        if fetch is None:
+            return []
+        user_ids = [d[0] for d in fetch]
+        return user_ids
+
+    def check_user_fav_stale(self, user_id, stale_time=None):
+        '''
+        Returns false if user fav metadata is fresh, else true.
+        '''
+        self.c.execute('''
+            SELECT updated FROM user_favorites_meta WHERE user_id = %s''',
+            (user_id,))
+        updated = self.c.fetchone()
+        if updated is not None:
+            updated = updated[0]
+            if stale_time is None:
+                stale_time = constants.USER_FAV_STALE_TIME
+
+            age = time.time() - updated
+            stale = age > stale_time
+            self.logger.debug('user {} is {} stale (age {})'.format(
+                user_id, '' if stale else 'not',
+                seconds_to_dhms(age)
+            ))
+            return stale
+
+        else:
+            # absense of entry is considered "stale"
+            self.logger.debug('user {} not found in metadata, considered stale'.format(user_id))
+            return True
+
+    def check_post_fav_stale(self, post_id, stale_time=None):
+        '''
+        Returns false if post fav metadata is fresh, else true.
+        '''
+        self.c.execute('''
+            SELECT updated FROM post_favorites_meta WHERE post_id = %s''',
+            (post_id,))
+        updated = self.c.fetchone()
+        if updated is not None:
+            updated = updated[0]
+            if stale_time is None:
+                stale_time = constants.POST_FAV_STALE_TIME
+
+            age = time.time() - updated
+            stale = age > stale_time
+            self.logger.debug('post {} is {} stale (age {})'.format(
+                post_id, '' if stale else 'not',
+                seconds_to_dhms(age)
+            ))
+            return stale
+
+        else:
+            # absense of entry is considered "stale"
+            self.logger.debug('post {} not found in metadata, considered stale'.format(post_id))
+            return True
 
 
 
@@ -841,17 +936,34 @@ class Scraper():
 
     def single_user_favs(self, user_id):
         '''
-        Fetch and save favorite posts (and data therein) for a user,
+        Hit cache or fetch and save favorite post ids for a user,
         given their numeric user_id.
 
         Returns list of post ids.
         '''
-        posts = self.net.fetch_user_fav_posts(user_id)
-        self.logger.debug('Got {} favorites from user {}'.format(len(posts), user_id))
-        post_ids = [p['id'] for p in posts]
-        self.db.save_favs_from_user(user_id=user_id, post_ids=post_ids)
-        self.db.save_posts(posts)
-        return post_ids
+        if self.db.check_user_fav_stale(user_id):
+            post_ids = self.net.fetch_user_fav_posts(user_id)
+            self.logger.debug('Got {} favorites from user {}'.format(len(post_ids), user_id))
+            self.db.save_favs_from_user(user_id=user_id, post_ids=post_ids)
+            return post_ids
+        else:
+            return self.db.fetch_user_fav_post_ids(user_id)
+    
+    def single_post_favs(self, post_id):
+        '''
+        Hit cache or fetch and save favorite information on a single post.
+
+        Returns list of user_ids.
+        '''
+        if self.db.check_post_fav_stale(post_id):
+            data = self.net.fetch_post_favs(post_id)
+            user_ids = [u['user_id'] for u in data]
+            user_favcounts = [u['user_favcount'] for u in data]
+            self.db.save_favs_from_post(post_id=post_id, user_ids=user_ids)
+            self.db.save_user_favcounts(data)
+            return user_ids
+        else:
+            return self.db.fetch_post_fav_user_ids(post_id)
 
 
     def single_user(self, user_id):
@@ -916,26 +1028,43 @@ class Scraper():
         Get favorites from known user_ids in ascending order.
         Saves favorites graph and post information.
         '''
-
-        # do loop here
         for user_id in self.db.fetch_user_ids_generator(start_id):
             
-            favs = self.net.fetch_fav_ids(user_id)
+            favs = self.net.fetch_user_fav_posts(user_id)
             self.db.save_favs_from_user(user_id, favs)
 
-    def single_post_favs(self, post_id):
-        '''
-        Fetch and save favorite information on a single post.
 
-        Returns data dict.
+    def crawl_post_user_favs(self, post_id):
+        '''
+        Fetch a post's favoriting users, then fetch those users' favorites.
+        '''
+        user_ids = self.single_post_favs(post_id)
+        self.logger.info('Crawling {} users from post {}'.format(
+            len(user_ids), post_id
+        ))
+
+        for u in user_ids:
+            self.single_user_favs(u)
+            
+
+    def crawl_core_user(self, core_user_id):
+        '''
+        Fetch a user's favorited posts
+            On each favorited post, fetch favoriting users
+                On each favoriting user, fetch favorites of each favoriting user
         '''
 
-        data = self.net.fetch_post_favs(post_id)
-        user_ids = [u['user_id'] for u in data]
-        user_favcounts = [u['user_favcount'] for u in data]
-        self.db.save_favs_from_post(post_id=post_id, user_ids=user_ids)
-        self.db.save_user_favcounts(data)
-        return data
+        core_posts = self.single_user_favs(core_user_id)
+        self.logger.info('Crawling core user {}: {} posts'.format(
+            core_user_id, len(core_posts)
+        ))
+ 
+        for post_id in core_posts:
+            self.crawl_post_user_favs(post_id)
+        self.logger.info('Done crawling user {}.'.format(core_user_id))
+
+
+
 
 
 
@@ -974,24 +1103,15 @@ def main():
     user 979066 (test_acct_pls_ignore): me, also, but safe
     '''
 
-    #print(s.net.fetch_user_fav_posts(326127))
+    #s.crawl_favs_known_users(20570)
+
+    #s.crawl_post_user_favs(1802000)
     #s.single_user_favs(326127)
+    #print(db.fetch_post_fav_user_ids(860827))
+    #print(s.single_post_favs(860827, never_stale=True))
 
-    #db.save_user(net.fetch_user(326127))
-    #print(net.fetch_users(a=326127))
-    #s.multi_user(a=326127)
-    #s.crawl_all_users(start=186609)
+    s.crawl_post_user_favs(2755131)
 
-    #print(net.fetch_fav_ids(333077))
-
-    #s.crawl_favs_known_users(10970)
-
-    #net.do_login()
-    #net.fetch_post_favs(2169530)
-
-    #s.single_post_favs(2825879)
-
-    s.crawl_favs_known_users(19833)
 
 if __name__ == '__main__':
     try:

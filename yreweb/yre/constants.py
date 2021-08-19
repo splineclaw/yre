@@ -9,6 +9,7 @@ EXAMPLE_POST_ID = 1802000
 PAGE_DELAY = 2  # 30 per minute
 REQUEST_DELAY = 1  # 60 per minute
 FAV_REQ_TIMEOUT = 3  # seconds
+MAX_CONCURRENT_STATIC = 5 # concurrent requests for static content
 
 MIN_FAVS = 20 # applies to both fetch and resample
 SUBSET_FAVS_PER_POST = 256
@@ -20,4 +21,6 @@ SIM_PER_POST = 25 # store n similars per post
 SIMS_SHOWN = 10 # show n similars per post
 PRE_DOWNLOAD = False # download SIM_PER_POST posts during presampling
 
+POST_FAV_STALE_TIME = 2.6e6 # seconds
+USER_FAV_STALE_TIME = 2.6e6 # seconds
 DEFAULT_STALE_TIME = 10**7 # seconds
