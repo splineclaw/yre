@@ -185,6 +185,9 @@ How Long Will This Take?
         query_count = miss_count + hit_count = 1.3e6
         time = 1.3e6 * 2 s = 2.6e6 s = 30.09 days
 
+Might want to do something with tags later
+    https://e621.net/related_tag
+
 '''
 
 class NetInterface():
@@ -1034,7 +1037,7 @@ class Scraper():
             self.db.save_favs_from_user(user_id, favs)
 
 
-    def crawl_post_user_favs(self, post_id):
+    def crawl_post_user_favs(self, post_id, log_postfix=''):
         '''
         Fetch a post's favoriting users, then fetch those users' favorites.
         '''
@@ -1043,7 +1046,10 @@ class Scraper():
             len(user_ids), post_id
         ))
 
-        for u in user_ids:
+        for i, u in enumerate(user_ids):
+            self.logger.info('Crawl getting favs from user {} ({}/{}) {}'.format(
+                u, i+1, len(user_ids), log_postfix
+            ))
             self.single_user_favs(u)
             
 
@@ -1059,8 +1065,13 @@ class Scraper():
             core_user_id, len(core_posts)
         ))
  
-        for post_id in core_posts:
-            self.crawl_post_user_favs(post_id)
+        for i, post_id in enumerate(core_posts):
+            # set up log message
+            message = 'post {} ({}/{})'.format(post_id, i+1, len(core_posts))
+            self.logger.info('Crawling '+message)
+            # get favs on post
+            self.crawl_post_user_favs(post_id, log_postfix='from '+message)
+
         self.logger.info('Done crawling user {}.'.format(core_user_id))
 
 
@@ -1110,7 +1121,7 @@ def main():
     #print(db.fetch_post_fav_user_ids(860827))
     #print(s.single_post_favs(860827, never_stale=True))
 
-    s.crawl_post_user_favs(2755131)
+    s.crawl_post_user_favs(2755131, log_postfix='from post 2755131')
 
 
 if __name__ == '__main__':
