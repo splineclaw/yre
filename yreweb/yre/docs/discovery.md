@@ -16,3 +16,9 @@ Consider the case of a single post (the "core post") for which similar posts mus
 For a single core post, using post-order sampling on the core post is a necessity. Bridge users are a small subset of all users, so if using user-order sampling, a large number of users would have to be sampled before having enough edges to be workable.
 
 Doing reverse post-order sampling on branch posts would likewise yield users who are mostly uninvolved. As such reverse post-order is not sensible for a single core post scenario.
+
+"Typical" numbers from [distributions.md](distributions.md):
+- 1 core post
+- 40 bridge users
+- 500k bridge-branch favorites
+- 400k branch posts
