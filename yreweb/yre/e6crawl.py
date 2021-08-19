@@ -230,12 +230,13 @@ class NetInterface():
         self.throttle_stop = time.time() + throttle_duration
 
     def get(self, url, params={}):
+        start_time = time.time()
         throttle_duration = constants.REQUEST_DELAY if '.json' in url else constants.PAGE_DELAY
         self.wait(throttle_duration)
         response = self.s.get(url, params=params)
         self.logger.debug('get ({}) took {:4.3f}s/{:4.3f}s on {}'.format(
             response.status_code, response.elapsed.total_seconds(),
-            throttle_duration, response.url
+            time.time()-start_time, response.url
         ))
         return response
     
@@ -589,7 +590,8 @@ class DBInterface():
                             '''INSERT INTO
                                 favorites(post_id, user_id)
                                 VALUES (%s,%s)
-                                ON CONFLICT DO NOTHING''',
+                                ON CONFLICT (post_id, user_id)
+                                DO NOTHING''',
                             (post_id, user_id))
         self.c.execute(
                         '''INSERT INTO
@@ -613,7 +615,8 @@ class DBInterface():
                             '''INSERT INTO
                                 favorites(post_id, user_id)
                                 VALUES (%s,%s)
-                                ON CONFLICT DO NOTHING''',
+                                ON CONFLICT (post_id, user_id)
+                                DO NOTHING''',
                             (post_id, user_id))
         self.c.execute(
                         '''INSERT INTO
@@ -1112,6 +1115,13 @@ def main():
     user 326127 (VolcanicAsh): only 16 favorites
     user 333077 (splineclaw): hey that's me
     user 979066 (test_acct_pls_ignore): me, also, but safe
+
+
+    test posts
+    ----------
+    post 1479413 (gugu-troll): README source image
+    post 1802000 (mukomizu): hugging shark
+    post 2755131 (muhny): NSFW "Tucked Away"
     '''
 
     #s.crawl_favs_known_users(20570)
@@ -1121,7 +1131,7 @@ def main():
     #print(db.fetch_post_fav_user_ids(860827))
     #print(s.single_post_favs(860827, never_stale=True))
 
-    s.crawl_post_user_favs(2755131, log_postfix='from post 2755131')
+    s.crawl_post_user_favs(1479413, log_postfix='from post 1479413')
 
 
 if __name__ == '__main__':
