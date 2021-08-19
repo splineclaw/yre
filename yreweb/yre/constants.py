@@ -1,6 +1,6 @@
 from secrets import *
 
-VERSION = '0.0.08'
+VERSION = '0.0.09'
 
 USER_AGENT = 'yre {} ({})'.format(VERSION, API_USER)
 EXAMPLE_POST_ID = 1802000
